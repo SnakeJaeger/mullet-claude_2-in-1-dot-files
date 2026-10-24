@@ -1,0 +1,9 @@
+#!/bin/bash
+# Go menu Network group: bring Tailscale up / down. Claims Tailscale's operator
+# for this user first (shared with the guest account; see tailscale-claim).
+sudo -n /usr/local/bin/tailscale-claim >/dev/null 2>&1
+if tailscale status --json 2>/dev/null | jq -e '.BackendState == "Running"' >/dev/null; then
+  tailscale down && notify-send -a Tailscale "Tailscale" "Disconnected"
+else
+  tailscale up && notify-send -a Tailscale "Tailscale" "Connected"
+fi

@@ -13,14 +13,29 @@
 # balanced, which rate is remembered per power source like Omarchy remembers
 # the profile.
 #
+# Low battery: unplugged at or below LOW_PCT, less-balanced and performance
+# drop to balanced (60 Hz) once per discharge, without touching what's
+# remembered, so the next unplug on a fuller battery starts as before.
+# Picking a profile yourself afterwards sticks.
+#
 #   power-refresh list [--active-state]   profiles incl. less-balanced
 #   power-refresh set <profile>           pick one (remembered for AC/battery)
 #   power-refresh apply                   set the rate the profile calls for
 #   power-refresh mode                    Hyprland mode string for the laptop panel
 #   power-refresh watch                   apply on profile / AC changes (autostart)
+#   power-refresh reset-battery           battery choice back to default (autostart)
+#
+# Battery choices only last the session: autostart runs reset-battery, so
+# each login starts on battery at the default, less-balanced (the low-battery
+# guard makes that balanced 60 Hz at or below LOW_PCT).
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/power-refresh"
 mkdir -p "$STATE_DIR"
+LOW_PCT=30
+# low-done: the guard already ran this discharge. low-60: it forced balanced
+# to 60 Hz (cleared by plugging in or by picking a profile).
+LOW_DONE="$STATE_DIR/low-done"
+LOW_60="$STATE_DIR/low-60"
 
 source_now() {
   if [[ $(busctl get-property org.freedesktop.UPower /org/freedesktop/UPower org.freedesktop.UPower OnBattery 2>/dev/null) == "b true" ]]; then
@@ -31,8 +46,35 @@ source_now() {
 }
 
 balanced_hz() {
-  local f="$STATE_DIR/balanced-$(source_now)"
+  local src f
+  src=$(source_now)
+  [[ $src == battery && -e $LOW_60 ]] && { echo 60; return; }
+  f="$STATE_DIR/balanced-$src"
   [[ -r $f ]] && cat "$f" || echo 60
+}
+
+battery_pct() {
+  busctl get-property org.freedesktop.UPower /org/freedesktop/UPower/devices/DisplayDevice \
+    org.freedesktop.UPower.Device Percentage 2>/dev/null | awk '{ printf "%d", $2 }'
+}
+
+# Unplugged at or below LOW_PCT: drop to balanced 60 Hz, once per discharge.
+low_battery_guard() {
+  local pct profile
+  pct=$(battery_pct)
+  if [[ $(source_now) == ac || -z $pct ]] || (( pct > LOW_PCT )); then
+    rm -f "$LOW_DONE" "$LOW_60"
+    return
+  fi
+  [[ -e $LOW_DONE ]] && return
+  touch "$LOW_DONE"
+  profile=$(powerprofilesctl get 2>/dev/null)
+  if [[ $profile == performance || ( $profile == balanced && $(balanced_hz) == 120 ) ]]; then
+    touch "$LOW_60"
+    powerprofilesctl set balanced
+    omarchy-notification-send -g "󰁻" "Battery at ${pct}%" "Switched to Balanced (60 Hz)" 2>/dev/null ||
+      notify-send "Battery at ${pct}%" "Switched to Balanced (60 Hz)"
+  fi
 }
 
 wanted_hz() {
@@ -88,6 +130,7 @@ list() {
 set_profile() {
   local profile=$1 src
   src=$(source_now)
+  rm -f "$LOW_60"
   case $profile in
     less-balanced) echo 120 > "$STATE_DIR/balanced-$src"; profile=balanced ;;
     balanced) echo 60 > "$STATE_DIR/balanced-$src" ;;
@@ -96,17 +139,32 @@ set_profile() {
   apply
 }
 
+reset_battery() {
+  local dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/powerprofiles"
+  mkdir -p "$dir"
+  echo balanced > "$dir/battery"
+  echo 120 > "$STATE_DIR/balanced-battery"
+  rm -f "$LOW_DONE" "$LOW_60"
+  # ppd keeps its last profile across reboots; on battery, start at the default.
+  [[ $(source_now) == battery ]] && omarchy-powerprofiles-set battery >/dev/null 2>&1
+  low_battery_guard
+  apply
+}
+
 watch() {
   # One watcher only: a second one exits.
   exec 9>"$STATE_DIR/watch.lock"
   flock -n 9 || exit 0
+  low_battery_guard
   apply
   {
     gdbus monitor --system --dest org.freedesktop.UPower.PowerProfiles --object-path /org/freedesktop/UPower/PowerProfiles &
     gdbus monitor --system --dest org.freedesktop.UPower --object-path /org/freedesktop/UPower &
+    gdbus monitor --system --dest org.freedesktop.UPower --object-path /org/freedesktop/UPower/devices/DisplayDevice &
     wait
-  } | grep --line-buffered -E "ActiveProfile|OnBattery" | while read -r _; do
+  } | grep --line-buffered -E "ActiveProfile|OnBattery|'Percentage'" | while read -r _; do
     sleep 0.3
+    low_battery_guard
     apply
   done
 }
@@ -117,5 +175,6 @@ case ${1:-} in
   apply) apply ;;
   mode) [[ -r $STATE_DIR/hz ]] && mode_for "$(cat "$STATE_DIR/hz")" || mode_for 60 ;;
   watch) watch ;;
-  *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  reset-battery) reset_battery ;;
+  *) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

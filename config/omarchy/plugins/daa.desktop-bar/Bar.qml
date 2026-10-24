@@ -1028,6 +1028,20 @@ Item {
       && typeof target.triggerPress === "function"
   }
 
+  // A target hidden by a clipping ancestor (e.g. the switched-off indicators,
+  // tucked into a zero-width clipped area beside the weather) mustn't catch
+  // clicks meant for what's drawn there: the Dictation chip opened Voxtype's
+  // settings when the weather icon's edge was clicked with a popup open.
+  function clippedAway(slot, target, localX, localY) {
+    for (var p = target.parent; p; p = p.parent) {
+      if (!p.clip) continue
+      var q
+      try { q = slot.mapToItem(p, localX, localY) } catch (e) { return true }
+      if (q.x < 0 || q.y < 0 || q.x > p.width || q.y > p.height) return true
+    }
+    return false
+  }
+
   function moduleClickTargetAt(slot, localX, localY) {
     for (var i = clickTargets.length - 1; i >= 0; i--) {
       var target = clickTargets[i]
@@ -1041,7 +1055,8 @@ Item {
       }
 
       if (targetPoint.x >= 0 && targetPoint.x <= target.width &&
-          targetPoint.y >= 0 && targetPoint.y <= target.height) {
+          targetPoint.y >= 0 && targetPoint.y <= target.height &&
+          !clippedAway(slot, target, localX, localY)) {
         return target
       }
     }

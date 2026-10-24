@@ -933,7 +933,9 @@ Panel {
   function toggleTailscale() {
     var up = root.tailscaleState === "up"
     root.tailscaleState = "busy"
-    Quickshell.execDetached(["bash", "-c", up ? "tailscale down" : "tailscale up --operator=\"$USER\""])
+    // Whoever clicks becomes Tailscale's operator first (shared with the guest
+    // account; /usr/local/bin/tailscale-claim via a no-password sudo rule).
+    Quickshell.execDetached(["bash", "-c", "sudo -n /usr/local/bin/tailscale-claim >/dev/null 2>&1; " + (up ? "tailscale down" : "tailscale up")])
   }
 
   Timer {

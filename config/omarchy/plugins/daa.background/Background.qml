@@ -113,6 +113,21 @@ Item {
     revealAnimation.restart()
   }
 
+  // daa: double-click opens the pickers unless the image picker's toggle
+  // wrote this flag file.
+  property string pendingDoubleClick: ""
+  Process {
+    id: doubleClickGate
+    command: ["test", "-e", root.home + "/.local/state/omarchy/toggles/wallpaper-doubleclick-off"]
+    onExited: function(code) {
+      if (code !== 0) {
+        if (root.pendingDoubleClick === "theme") root.openThemeSwitcher()
+        else root.openSelector()
+      }
+      root.pendingDoubleClick = ""
+    }
+  }
+
   function openSelector() {
     if (!bgSwitchProc.running) bgSwitchProc.running = true
   }
@@ -334,8 +349,9 @@ Item {
         }
         onDoubleClicked: function(mouse) {
           if (root.tabletMode) return
-          if (mouse.button === Qt.RightButton) root.openThemeSwitcher()
-          else root.openSelector()
+          // daa: the background picker's toggle can turn this off.
+          root.pendingDoubleClick = mouse.button === Qt.RightButton ? "theme" : "background"
+          if (!doubleClickGate.running) doubleClickGate.running = true
           mouse.accepted = true
         }
       }

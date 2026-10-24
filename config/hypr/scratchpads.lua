@@ -96,6 +96,43 @@ local function hide_special(monitor)
   focus_regular(monitor)
 end
 
+-- Keyboard-grabbing overlays (Go menu, launcher, clipboard, pickers): when
+-- one closes, Hyprland gives focus back to the last focused window. If that's
+-- a window in a HIDDEN dropdown, its dropdown pops open. Park focus on a
+-- regular window as the overlay opens, so there's nothing hidden to go back to.
+local FOCUS_OVERLAYS = {
+  ["omarchy-menu"] = true, ["omarchy-launcher"] = true, ["omarchy-clipboard"] = true,
+  ["omarchy-image-selector"] = true, ["omarchy-emojis"] = true,
+}
+-- On an empty workspace there's nothing to park on, so as a backstop: for
+-- half a second after one of these overlays closes, a dropdown that appears
+-- unasked (not the one showing when it opened, not summoned on purpose)
+-- is hidden again.
+local overlay_grace, overlay_kept, overlay_gen = false, nil, 0
+hl.on("layer.closed", function(layer)
+  if not (layer and FOCUS_OVERLAYS[layer.namespace]) then return end
+  overlay_grace = true
+  overlay_gen = overlay_gen + 1
+  local gen = overlay_gen
+  hl.timer(function()
+    if gen ~= overlay_gen then return end
+    overlay_grace = false
+    overlay_kept = nil
+  end, { timeout = 500, type = "oneshot" })
+end)
+hl.on("layer.opened", function(layer)
+  if not (layer and FOCUS_OVERLAYS[layer.namespace]) then return end
+  local monitor = hl.get_active_monitor()
+  local shown = monitor and monitor.active_special_workspace
+  overlay_kept = shown and shown.name or nil
+  local active = hl.get_active_window()
+  if active and active.workspace and active.workspace.special
+    and not (shown and shown.name == active.workspace.name) then
+    dbg("overlay open: parking focus off hidden", active.workspace.name, layer.namespace)
+    focus_regular(monitor)
+  end
+end)
+
 hl.on("layer.opened", function(layer)
   if not (layer and layer.namespace == PANEL_NS) or panel_open then return end
   panel_open = true
@@ -106,6 +143,16 @@ hl.on("layer.opened", function(layer)
   local shown = monitor and monitor.active_special_workspace
   kept_special = kept_special or (shown and shown.name)
   if kept_special then dim_special(kept_special, true) end
+  -- If focus is still on a window in a HIDDEN dropdown/scratchpad (e.g. it
+  -- was hidden with its own key), park it on a regular window now. Otherwise
+  -- closing this panel hands focus back to that window and Hyprland shows its
+  -- dropdown, which flashed open while hovering from one bar menu to the next.
+  local active = hl.get_active_window()
+  if active and active.workspace and active.workspace.special
+    and not (shown and shown.name == active.workspace.name) then
+    dbg("panel open: parking focus off hidden", active.workspace.name)
+    focus_regular(monitor)
+  end
   dbg("panel open", "gen=" .. panel_gen, "kept=" .. tostring(kept_special))
 end)
 
@@ -121,7 +168,7 @@ hl.on("layer.closed", function(layer)
     if kept_special then dim_special(kept_special, false) end
     kept_special = nil
     summoned = nil
-  end, { timeout = 200, type = "oneshot" })
+  end, { timeout = 500, type = "oneshot" })   -- half a second: moving to the next menu
 end)
 
 hl.on("window.active", function(window)
@@ -131,8 +178,10 @@ hl.on("window.active", function(window)
     dbg("active special window", window.class, window.workspace.name,
       "panel_open=" .. tostring(panel_open), "grace=" .. tostring(panel_grace),
       "kept=" .. tostring(kept_special), "summoned=" .. tostring(summoned))
-    if (panel_open or panel_grace) and window.workspace.name ~= kept_special
-      and window.workspace.name ~= summoned then
+    if ((panel_open or panel_grace) and window.workspace.name ~= kept_special
+        and window.workspace.name ~= summoned)
+      or (overlay_grace and window.workspace.name ~= overlay_kept
+        and window.workspace.name ~= summoned) then
       -- Checked a moment later (window.active fires before the monitor
       -- reports the special as shown), and only toggled if it really is
       -- showing, so this can never toggle one open.
@@ -165,9 +214,16 @@ local function inside(window, pos)
   return pos.x >= x and pos.x < x + w and pos.y >= y and pos.y < y + h
 end
 
+-- Notification toasts report when the pointer is over them (daa.notifications)
+-- so clicking one, or its close button, leaves the scratchpad up.
+notification_hovered = false
+function set_notification_hover(on)
+  notification_hovered = on and true or false
+end
+
 hl.bind("mouse:272", function()
   -- Clicks in (or dismissing) a bar panel leave the dimmed scratchpad be.
-  if panel_open then return end
+  if panel_open or notification_hovered then return end
   local pos = hl.get_cursor_pos()
   local monitor = pos and hl.get_monitor_at(pos)
   local special = monitor and monitor.active_special_workspace
@@ -214,6 +270,8 @@ end)
 -- Debug: every special workspace shown or hidden, with what had focus and
 -- where the cursor was.
 hl.on("workspace.special_active", function(ws)
+  -- A summoned dropdown that's been hidden again is no longer "on purpose".
+  if not (ws and ws.name) and not panel_open and not panel_grace then summoned = nil end
   local active = hl.get_active_window()
   local pos = hl.get_cursor_pos()
   dbg(ws and ws.name and ("SHOW " .. ws.name) or "HIDE",

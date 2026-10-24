@@ -1,0 +1,4 @@
+#!/bin/bash
+# Make the user who ran this (via sudo) Tailscale's operator, so their bar and
+# menu toggles can bring it up/down without sudo. Shared by daa and guest.
+exec /usr/bin/tailscale set --operator="${SUDO_USER:?run via sudo}"

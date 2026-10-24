@@ -64,14 +64,18 @@
     "daa.menu",
     "daa.background",
     "daa.clipboard",
-    "daa.polkit"
+    "daa.polkit",
+    "daa.notifications",
+    "daa.image-picker"
   ],
   "disabledPlugins": [
     "omarchy.osd",
     "omarchy.menu",
     "omarchy.background",
     "omarchy.clipboard",
-    "omarchy.polkit"
+    "omarchy.polkit",
+    "omarchy.notifications",
+    "omarchy.image-picker"
   ],
   "idle": {
     "lock": 300,
@@ -128,6 +132,12 @@
     },
     {
       "id": "daa.infobar"
+    },
+    {
+      "id": "daa.notifications"
+    },
+    {
+      "id": "daa.image-picker"
     }
   ],
   "version": 1

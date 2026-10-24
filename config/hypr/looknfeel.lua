@@ -57,6 +57,7 @@ hl.layer_rule({ match = { namespace = "omarchy-bar" }, blur = true, blur_popups 
 -- Volume/brightness OSD (daa.osd draws it at 85%): frost what's behind it.
 hl.layer_rule({ match = { namespace = "omarchy-osd" }, blur = true, ignore_alpha = 0.1 })
 hl.layer_rule({ match = { namespace = "daa-infobar" }, blur = true, ignore_alpha = 0.1 })
+hl.layer_rule({ match = { namespace = "omarchy-notifications" }, blur = true, ignore_alpha = 0.1 })
 
 -- App grid and Omarchy menu cards (85%, [menu] in ~/.config/omarchy/themed/
 -- shell.toml.tpl). ignore_alpha 0.6 skips their 50% full-screen dim scrim, so
@@ -126,3 +127,6 @@ hl.config({
     },
   },
 })
+
+-- GNOME Weather (SUPER+ALT+W / bar weather click): borderless.
+o.window("^org.gnome.Weather$", { border_size = 0 })

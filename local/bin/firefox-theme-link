@@ -1,0 +1,31 @@
+#!/bin/bash
+# Link the Omarchy-themed userChrome/userContent (rendered from
+# ~/.config/omarchy/themed/firefox-user*.css.tpl into the current theme) into
+# every Firefox profile, and turn on the pref that lets Firefox load them.
+# Safe to re-run. Autostart runs it with --wait: a new account has no profile
+# until Firefox first starts, so it checks every 20 s until one is linked.
+#
+#   firefox-theme-link          link existing profiles now
+#   firefox-theme-link --wait   keep checking until a profile is linked
+
+THEME="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/current/theme"
+PREF='user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);'
+
+link_all() {
+  local linked=1 profile
+  for profile in "$HOME"/.config/mozilla/firefox/*.default* "$HOME"/.mozilla/firefox/*.default*; do
+    [[ -d $profile ]] || continue
+    mkdir -p "$profile/chrome"
+    ln -sfn "$THEME/firefox-userChrome.css" "$profile/chrome/userChrome.css"
+    ln -sfn "$THEME/firefox-userContent.css" "$profile/chrome/userContent.css"
+    grep -qF "$PREF" "$profile/user.js" 2>/dev/null || echo "$PREF" >> "$profile/user.js"
+    linked=0
+  done
+  return $linked
+}
+
+if [[ ${1:-} == --wait ]]; then
+  until link_all; do sleep 20; done
+else
+  link_all
+fi

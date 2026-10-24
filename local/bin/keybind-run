@@ -1,0 +1,22 @@
+#!/bin/bash
+# Run a keybinding by its line in the keybindings list, the way SUPER+K does
+# when you pick it. Used by the Go menu's Keybinds panel (daa.menu), which
+# shows `omarchy-menu-keybindings --print`; those lines are the first field of
+# the script's binding records.
+#
+#   keybind-run "SUPER + RETURN                      → Terminal"
+#
+# Loads omarchy-menu-keybindings' functions (everything above its main block)
+# so lookups and dispatch stay identical to SUPER+K.
+set -u
+line=${1:?usage: keybind-run "<line from omarchy-menu-keybindings --print>"}
+script=$(command -v omarchy-menu-keybindings) || exit 1
+
+# shellcheck disable=SC1090
+source <(sed '/^if \[\[ \$1 == "--print"/,$d' "$script")
+
+record=$(output_binding_records | awk -F '\t' -v selection="$line" '$1 == selection { print; exit }')
+[[ -n $record ]] || exit 1
+dispatcher=$(cut -f2 <<<"$record")
+arg=$(cut -f3- <<<"$record")
+dispatch_binding "$dispatcher" "$arg"

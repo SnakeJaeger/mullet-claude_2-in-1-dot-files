@@ -1,0 +1,6 @@
+[
+	// Ctrl+P opens the Command Palette (Sublime's default there is Goto
+	// Anything), and Goto Anything moves to Ctrl+Shift+P: the two swap.
+	{ "keys": ["ctrl+p"], "command": "show_overlay", "args": {"overlay": "command_palette"} },
+	{ "keys": ["ctrl+shift+p"], "command": "show_overlay", "args": {"overlay": "goto", "show_files": true} }
+]

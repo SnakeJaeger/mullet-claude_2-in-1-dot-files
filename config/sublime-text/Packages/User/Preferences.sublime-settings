@@ -1,0 +1,19 @@
+{
+	// Follows the Omarchy theme: the colour scheme is rendered from
+	// ~/.config/omarchy/themed/Omarchy.sublime-color-scheme.tpl on every theme
+	// switch; Adaptive builds the sidebar, tabs and panels from it.
+	"color_scheme": "Omarchy.sublime-color-scheme",
+	"theme": "Adaptive.sublime-theme",
+	"font_face": "JetBrainsMono Nerd Font",
+	"font_size": 11,
+	"line_padding_top": 2,
+	"line_padding_bottom": 2,
+	"highlight_line": true,
+	"caret_style": "smooth",
+	"bold_folder_labels": true,
+	"indent_guide_options": ["draw_normal", "draw_active"],
+	"overlay_scroll_bars": "enabled",
+	"hardware_acceleration": "opengl",
+	// No tab-scroll arrows at the left of the tab strip; tabs shrink to fit.
+	"enable_tab_scrolling": false
+}

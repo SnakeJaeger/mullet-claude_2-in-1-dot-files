@@ -1,0 +1,119 @@
+#!/bin/bash
+# Mullvad in a terminal (SUPER+M dropdown): live status plus a menu to
+# connect / disconnect, change location and flip the common settings.
+# The full app is SUPER+SHIFT+M. Uses gum.
+#
+# No `gum choose --timeout`: on timeout gum returns the highlighted item, so a
+# timed refresh pressed Connect/Disconnect every few seconds. Refresh is an
+# item instead, and nothing runs without a key press.
+
+# "Open the app" only where the app has a dropdown (not on the guest account).
+open_app=()
+hyprctl binds -j 2>/dev/null | jq -e 'any(.[]; .description == "Dropdown Mullvad VPN app")' >/dev/null &&
+  open_app=("Open the app")
+
+RECENT="${XDG_STATE_HOME:-$HOME/.local/state}/mullvad-tui/recent"
+mkdir -p "${RECENT%/*}"; touch "$RECENT"
+
+# Remember a picked location (name<TAB>codes), newest first, three at most.
+remember() {
+  { printf '%s\t%s\n' "$1" "$2"; grep -v "^$1"$'\t' "$RECENT" 2>/dev/null; } | head -3 > "$RECENT.tmp"
+  mv "$RECENT.tmp" "$RECENT"
+}
+
+# Days left on the account, coloured: yellow under 14, red under 3. The
+# account lookup asks Mullvad's servers, so it's cached for 10 minutes.
+account_line() {
+  local now expires days color
+  now=$(date +%s)
+  if [[ -z $ACCOUNT_AT ]] || (( now - ACCOUNT_AT > 600 )); then
+    ACCOUNT_EXPIRES=$(mullvad account get 2>/dev/null | sed -n 's/^Expires at: *//p')
+    ACCOUNT_AT=$now
+  fi
+  [[ -n $ACCOUNT_EXPIRES ]] || return
+  expires=$(date -d "$ACCOUNT_EXPIRES" +%s 2>/dev/null) || return
+  days=$(( (expires - now) / 86400 ))
+  if (( days < 3 )); then color=9; elif (( days < 14 )); then color=11; else color=8; fi
+  gum style --foreground "$color" "  Account: $days days left ($(date -d "$ACCOUNT_EXPIRES" '+%b %-d'))"
+}
+
+pick_location() {
+  # "Country" and "Country, City" entries from the relay list, mapped back to
+  # Mullvad's codes ("se" / "se got").
+  local -A codes=()
+  local line name choice
+  while IFS=$'\t' read -r name line; do codes[$name]=$line; done < <(mullvad relay list | awk '
+    /^[^\t].*\([a-z]+\)$/ { country = $0; sub(/ \([a-z]+\)$/, "", country)
+                            cc = $0; sub(/.*\(/, "", cc); sub(/\)$/, "", cc)
+                            print country "\t" cc; next }
+    /^\t[^\t]/ { city = $0; sub(/^\t/, "", city); code = city
+                 sub(/ \(.*$/, "", city); sub(/^[^(]*\(/, "", code); sub(/\).*$/, "", code)
+                 print country ", " city "\t" cc " " code }')
+  choice=$(printf '%s\n' "${!codes[@]}" | sort | gum filter --placeholder "Country or city…" --height 15) || return
+  [[ -n $choice && -n ${codes[$choice]} ]] || return
+  # shellcheck disable=SC2086
+  mullvad relay set location ${codes[$choice]} >/dev/null && mullvad reconnect >/dev/null 2>&1
+  remember "$choice" "${codes[$choice]}"
+}
+
+toggle_setting() {
+  local cmd=$1 state
+  state=$(mullvad "$cmd" get 2>/dev/null)
+  case $cmd in
+    lockdown-mode) [[ $state == *": on" ]] && mullvad lockdown-mode set off || mullvad lockdown-mode set on ;;
+    lan) [[ $state == *": allow" ]] && mullvad lan set block || mullvad lan set allow ;;
+  esac >/dev/null
+}
+
+while true; do
+  clear
+  status=$(mullvad status -v 2>&1)
+  state=$(head -1 <<<"$status")
+  case $state in
+    Connected*) color=10 ;;
+    Connecting*|Disconnecting*) color=11 ;;
+    *) color=9 ;;
+  esac
+  gum style --bold --foreground "$color" "󰒃  Mullvad: $state"
+  sed -n '2,$p' <<<"$status" | grep -E "Relay|Visible location|Features" | sed 's/^ */  /'
+  echo "  Lockdown: $(mullvad lockdown-mode get | sed 's/.*: //')   LAN sharing: $(mullvad lan get | sed 's/.*: //')"
+  account_line
+  echo
+
+  # Quick connects: custom lists, then recent picks.
+  declare -A quick=()
+  items=()
+  while IFS= read -r list; do
+    [[ -n $list ]] || continue
+    quick["→ $list (list)"]="list $list"; items+=("→ $list (list)")
+  done < <(mullvad custom-list list 2>/dev/null | grep -v $'^\t')
+  while IFS=$'\t' read -r name codes; do
+    [[ -n $name ]] || continue
+    quick["→ $name"]="loc $codes"; items+=("→ $name")
+  done < "$RECENT" 2>/dev/null
+
+  if [[ $state == Connected* || $state == Connecting* ]]; then main="Disconnect"; else main="Connect"; fi
+  action=$(gum choose --header "" \
+    "Refresh" "$main" "Reconnect" "${items[@]}" "Change location" "Toggle lockdown" "Toggle LAN sharing" "${open_app[@]}")
+
+  case $action in
+    Connect) mullvad connect >/dev/null ;;
+    Disconnect) mullvad disconnect >/dev/null ;;
+    Reconnect) mullvad reconnect >/dev/null ;;
+    "Change location") pick_location ;;
+    "Toggle lockdown") toggle_setting lockdown-mode ;;
+    "Toggle LAN sharing") toggle_setting lan ;;
+    "Open the app") hyprctl eval 'dropdown_toggle("mullvad")' >/dev/null ;;
+    "→ "*)
+      target=${quick[$action]}
+      case $target in
+        "list "*) mullvad relay set custom-list "${target#list }" >/dev/null ;;
+        # shellcheck disable=SC2086
+        "loc "*) mullvad relay set location ${target#loc } >/dev/null ;;
+      esac
+      [[ $state == Connected* || $state == Connecting* ]] && mullvad reconnect >/dev/null || mullvad connect >/dev/null ;;
+  esac
+  [[ -n $action && $action != Refresh ]] && sleep 0.6
+  # Esc / Ctrl+C in the menu: wait for a key instead of spinning.
+  [[ -z $action ]] && read -rsn1 -p "  Press any key for the menu…"
+done

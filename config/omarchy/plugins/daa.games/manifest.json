@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "daa.games",
+  "name": "Games button",
+  "version": "1.0.0",
+  "author": "daa",
+  "description": "RetroArch invader: left click ES-DE, right click Steam",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Games button",
+    "description": "RetroArch invader: left click ES-DE, right click Steam",
+    "category": "Launcher",
+    "allowMultiple": false
+  }
+}

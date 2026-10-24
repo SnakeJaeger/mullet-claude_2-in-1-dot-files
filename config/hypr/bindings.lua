@@ -35,6 +35,15 @@ hl.unbind("SUPER + C")
 hl.unbind("SUPER + T")
 o.bind("SUPER + SHIFT + T", "Alacritty", { launch = "alacritty" })
 
+-- SUPER+O pop-out skips scratchpads and dropdowns (special workspaces): it
+-- floated them, then they came back as a tile.
+hl.unbind("SUPER + O")
+o.bind("SUPER + O", "Pop window out (float & pin)",
+  [[sh -c 'hyprctl activewindow -j | jq -e ".workspace.name | startswith(\"special:\")" >/dev/null || omarchy-hyprland-window-pop']])
+
+-- SUPER+Z dismisses the newest notification (same as SUPER + comma).
+o.bind("SUPER + Z", "Dismiss last notification", "omarchy-shell notifications dismissOne")
+
 -- Google web apps removed; drop their default shortcuts too.
 hl.unbind("SUPER + SHIFT + Y")        -- was: YouTube
 hl.unbind("SUPER + SHIFT + CTRL + G") -- was: Google Messages
@@ -99,7 +108,9 @@ local menu_keys = {
   { "SUPER + SHIFT + CTRL + SPACE", "Theme menu", "theme" },
   { "SUPER + CTRL + S", "Share", "share" },
   { "SUPER + CTRL + R", "Set reminder", "reminder-set" },
-  { "SUPER + K", "Keybindings", "'dmenu:Keybindings' omarchy-menu-keybindings" },
+  -- SUPER+K: the Go menu's Keybinds panel; SUPER+SHIFT+K: the big list.
+  { "SUPER + K", "Keybindings", "go:keys" },
+  { "SUPER + SHIFT + K", "Keybindings (full list)", "'dmenu:Keybindings' omarchy-menu-keybindings" },
   { "SUPER + ALT + K", "Tmux keybindings", "'dmenu:Tmux keybindings' omarchy-menu-tmux-keybindings" },
   { "SUPER + CTRL + K", "Herdr keybindings", "'dmenu:Herdr keybindings' omarchy-menu-herdr-keybindings" },
 }
@@ -113,7 +124,7 @@ o.bind("XF86PowerOff", "Power menu", "~/.local/bin/menu-toggle system", { locked
 -- Easter egg: SUPER + CTRL + ALT + SPACE opens the Go menu so hard it swings
 -- into the left edge, the hinge snaps and everything falls off the screen
 -- (daa.menu Menu.qml, eggAnim). Plain SUPER + SPACE is Omarchy's default.
-o.bind("SUPER + CTRL + ALT + SPACE", "Omarchy menu (easter egg)",
+o.bind("SUPER + CTRL + ALT + SPACE", "Super duper menu",
   [[omarchy-shell shell toggle omarchy.menu '{"menu":"root","egg":true}']])
 
 -- Tap SUPER on its own: info bar (daa.infobar). Fires on release; a second

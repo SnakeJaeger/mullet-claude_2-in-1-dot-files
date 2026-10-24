@@ -88,9 +88,12 @@ Item {
       }
     }
 
-    // 󰎁 Jellyfin ●   󰋩 Immich ●   󰃭 Calendar ●
+    // 󰎁 Jellyfin ●   󰋩 Immich ●   󰃭 Calendar ●   󰍹 Remmina
     Row {
+      id: tileRow
       width: parent.width
+      // The services plus the Remmina tile.
+      readonly property real tileWidth: width / Math.max(1, card.services.length + 1)
 
       Repeater {
         model: card.services
@@ -98,7 +101,7 @@ Item {
         Rectangle {
           id: serviceTile
           required property var modelData
-          width: parent.width / Math.max(1, card.services.length)
+          width: tileRow.tileWidth
           height: serviceColumn.implicitHeight + Style.space(8)
           radius: card.radius
           color: serviceArea.containsMouse ? card.hoverBackground : "transparent"
@@ -154,9 +157,48 @@ Item {
           }
         }
       }
+
+      // Remmina (remote desktop to the lab), moved here from the tray.
+      Rectangle {
+        width: tileRow.tileWidth
+        height: remminaColumn.implicitHeight + Style.space(8)
+        radius: card.radius
+        color: remminaArea.containsMouse ? card.hoverBackground : "transparent"
+
+        Column {
+          id: remminaColumn
+          anchors.centerIn: parent
+          spacing: Style.space(3)
+
+          Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "󰍹"
+            color: remminaArea.containsMouse ? card.accent : card.foreground
+            font.family: "JetBrainsMono Nerd Font"
+            font.pixelSize: Math.round(Style.font.heading * 1.15)
+          }
+          Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "Remmina"
+            color: card.foreground
+            opacity: 0.9
+            font.family: card.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+        }
+
+        MouseArea {
+          id: remminaArea
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: card.remminaRequested()
+        }
+      }
     }
   }
 
   // Menu.qml closes itself and runs `server-status open <name>`.
   signal opened(string name)
+  signal remminaRequested()
 }

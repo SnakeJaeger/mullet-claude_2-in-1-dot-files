@@ -2,7 +2,8 @@
 # Menu keys (hypr/bindings.lua): close the menu if this key's own menu is up,
 # otherwise open it, switching over from whatever menu is showing.
 #   menu-toggle <route>                    an Omarchy menu route (root, system…)
-#   menu-toggle dmenu:<prompt> <command…>  a script-driven list (SUPER+K…)
+#   menu-toggle dmenu:<prompt> <command…>  a script-driven list (SUPER+SHIFT+K…)
+#   menu-toggle go:keys                    the Go menu on its Keybinds panel (SUPER+K)
 # daa.menu keeps what the open menu was opened as in the file below.
 
 want="$1"
@@ -16,6 +17,9 @@ fi
 
 if [[ $want == dmenu:* ]]; then
   exec "$@"
+elif [[ $want == go:keys ]]; then
+  exec omarchy-shell shell summon omarchy.menu '{"menu":"root","keys":true}'
+
 else
   exec omarchy-menu summon "$want"
 fi

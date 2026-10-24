@@ -30,7 +30,11 @@ local dropdowns = {
   { key = "SUPER + ALT + W", name = "weather", title = "Dropdown weather", cmd = "gnome-weather", match = "org.gnome.Weather", px = { 840, 620 }, preload = true },
   -- Rises from the bottom and rests a third of the way up. Mullvad's window is
   -- a fixed 320x568.
-  { key = "SUPER + M", name = "mullvad", title = "Dropdown Mullvad VPN", cmd = "mullvad-vpn", match = "mullvad-vpn", px = { 320, 568 }, rise = 1 / 3, preload = true },
+  -- Mullvad in a terminal (status + menu, ~/.local/bin/mullvad-tui); the full app is SUPER+SHIFT+M.
+  { key = "SUPER + M", name = "vpn", title = "Dropdown Mullvad (terminal)", cmd = "alacritty --class dropdown.vpn -e mullvad-tui", px = { 760, 440 }, preload = true },
+  { key = "SUPER + SHIFT + M", name = "mullvad", title = "Dropdown Mullvad VPN app", cmd = "mullvad-vpn", match = "mullvad-vpn", px = { 320, 568 }, rise = 1 / 3,
+    -- Closing its window only sends it to the tray, so quit the app itself.
+    quit_on_hide = [[pkill -TERM -f 'electron --ozone-platform=x11 /usr/lib/mullvad-vpn/app\.asar$']] },
 }
 
 -- Bitwarden reloads its window and asks for focus every time the vault locks;
@@ -78,6 +82,9 @@ end
 
 -- Claimed dropdown windows by address, so scratchpads.lua can leave them be.
 dropdown_windows = {}
+
+-- SUPER+SHIFT+M was Omarchy's Music; it opens the Mullvad app now.
+hl.unbind("SUPER + SHIFT + M")
 
 local claimed = {} -- dropdown name -> window address
 local pending = {} -- class -> dropdown waiting for its window
@@ -320,3 +327,31 @@ for _, dropdown in ipairs(dropdowns) do
 
   ::continue::
 end
+
+-- quit_on_hide: the app only runs while it's on screen. Hiding it (its key,
+-- a click outside, SUPER+X) closes the window -- or runs quit_on_hide when it's
+-- a command -- so it isn't running at logout.
+-- The Mullvad GUI crash-reported whenever logout killed it. Connecting and
+-- disconnecting go through the mullvad CLI (bar toggle, Go menu), not the app.
+local shown_special = nil
+hl.on("workspace.special_active", function(ws)
+  local name = ws and ws.name or nil
+  local was = shown_special
+  shown_special = name
+  if not was or was == name then return end
+  for _, dropdown in ipairs(dropdowns) do
+    if dropdown.quit_on_hide and was == "special:dropdown-" .. dropdown.name then
+      for _, window in ipairs(hl.get_windows()) do
+        if window.class == dropdown.match and window.workspace and window.workspace.name == was then
+          dropdown_windows[window.address] = nil
+          if type(dropdown.quit_on_hide) ~= "string" then
+            hl.dispatch(hl.dsp.window.close({ window = window }))
+          end
+        end
+      end
+      if type(dropdown.quit_on_hide) == "string" then hl.exec_cmd(dropdown.quit_on_hide) end
+      claimed[dropdown.name] = nil
+    end
+  end
+end)
+

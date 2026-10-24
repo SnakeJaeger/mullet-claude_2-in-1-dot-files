@@ -90,7 +90,8 @@ Item {
     root.rebuildDisplay()
   }
 
-  readonly property int columns: 7
+  // 5 columns x 6 rows, sized so the window is square like the logo frame.
+  readonly property int columns: 5
   readonly property int rows: 6
 
   // Shares the [menu] surface tokens, like the emoji picker.
@@ -104,11 +105,14 @@ Item {
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Style.font.menuFamily
   property int contentMargin: Style.spacing.panelPadding
-  property int headerHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
+  // Two header rows in the square window: search, then the category tabs.
+  readonly property int headerRowHeight: Math.max(Style.space(34), Style.font.title + Style.spacing.controlPaddingY * 2)
+  property int headerHeight: headerRowHeight * 2 + Style.space(6)
   property int contentSpacing: Style.spacing.md
 
   property int iconSize: Style.space(48)
-  property int cellWidth: Style.space(116)
+  // Square card: the columns together as wide as the header plus the rows are tall.
+  property int cellWidth: Math.round((headerHeight + contentSpacing + rows * cellHeight) / columns)
   property int cellHeight: iconSize + Style.font.body * 2 + Style.space(22)
 
   function open(payloadJson) {
@@ -364,10 +368,268 @@ Item {
       radius: root.cornerRadius
       anchors.centerIn: parent
       color: root.background
-      borderSpec: root.borderSpec
-      padding: root.contentMargin
+      // The plain border is replaced by the Omarchy square logo (below).
+      borderSpec: Border.none()
+      // Extra room inside the logo frame.
+      padding: root.contentMargin + Style.space(16)
 
       MouseArea { anchors.fill: parent; onClicked: {} }
+
+      // A soft Tokyo Night blue haze in the middle, fading out well before the
+      // frame, so the window looks lit from within behind the apps.
+      Canvas {
+        id: centreTint
+        anchors.fill: parent
+        readonly property color tint: "#7aa2f7"
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.reset()
+          var cx = width / 2, cy = height * 0.55, r = Math.min(width, height) * 0.48
+          var grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r)
+          grad.addColorStop(0, Qt.rgba(tint.r, tint.g, tint.b, 0.13))
+          grad.addColorStop(0.55, Qt.rgba(tint.r, tint.g, tint.b, 0.06))
+          grad.addColorStop(1, Qt.rgba(tint.r, tint.g, tint.b, 0))
+          ctx.fillStyle = grad
+          ctx.fillRect(0, 0, width, height)
+        }
+      }
+
+      // Window frame drawn as the Omarchy square logo (13x13 cells):
+      //   #############   outer line
+      //   #.....#.....#   joint (top)
+      //   #.#####..##.#   inner line, with its gap
+      //   #.#.......#.#
+      //   ###.......#.#   joint (left)
+      //   #.#.......#.#
+      //   #.#########.#   inner line
+      //   #.....#.....#   joint (bottom)
+      //   #######.#####   outer line, with its notch
+      // Lines are thin; the gap between outer and inner is fixed; breaks and
+      // joints sit at the same proportional spot along each edge as in the logo
+      // (the 7 interior cells share the length evenly).
+      Canvas {
+        id: logoFrame
+        anchors.fill: parent
+        anchors.margins: Style.space(4)
+        opacity: 0.6
+        // Thicker lines grow away from the gap (it stays `gap` wide).
+        readonly property real line: Style.spaceReal(6.75)
+        readonly property real gap: Style.space(10)   // between outer and inner lines
+        readonly property color ink: root.border
+        onInkChanged: requestPaint()
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
+        // Edge of cell i (0..13) along a side of length total.
+        function b(i, total) {
+          var band = 2 * line + gap
+          if (i <= 0) return 0
+          if (i === 1) return line
+          if (i === 2) return line + gap
+          if (i <= 10) return band + (i - 3) * (total - 2 * band) / 7
+          if (i === 11) return total - line - gap
+          if (i === 12) return total - line
+          return total
+        }
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.reset()
+          ctx.fillStyle = ink
+          var W = width, H = height, c = line, g = gap
+          function rect(x0, y0, x1, y1) { ctx.fillRect(Math.round(x0), Math.round(y0), Math.round(x1) - Math.round(x0), Math.round(y1) - Math.round(y0)) }
+          var x7 = b(7, W), x8 = b(8, W), x9 = b(9, W)
+          // Outer line: full top and sides, notch in the bottom (cell 7).
+          rect(0, 0, W, c)
+          rect(0, 0, c, H)
+          rect(W - c, 0, W, H)
+          rect(0, H - c, x7, H)
+          rect(x8, H - c, W, H)
+          // Inner line: gap in the top (cells 7-8), full sides and bottom.
+          rect(c + g, c + g, x7, 2 * c + g)
+          rect(x9, c + g, W - c - g, 2 * c + g)
+          rect(c + g, c + g, 2 * c + g, H - c - g)
+          rect(W - 2 * c - g, c + g, W - c - g, H - c - g)
+          rect(c + g, H - 2 * c - g, W - c - g, H - c - g)
+          // Joints across the gap: top and bottom flush with cell 6's end,
+          // left centred on cell 6.
+          rect(x7 - c, c, x7, c + g)
+          rect(x7 - c, H - c - g, x7, H - c)
+          var y6 = (b(6, H) + b(7, H)) / 2
+          rect(c, y6 - c / 2, c + g, y6 + c / 2)
+        }
+      }
+
+      // Light trails running along the logo frame from its 7 entrances: both
+      // sides of the inner line's top gap, both sides of the outer line's
+      // bottom notch, and the 3 joints. Each leads with a white head, turns
+      // cyan or coral, and fades behind; it runs part-way round, fades out,
+      // and starts again from its entrance. Staggered so they never sync.
+      Canvas {
+        id: logoComets
+        anchors.fill: logoFrame
+        property real t: 0
+        readonly property color cyan: Commons.Color.pick("tablet.accent", Commons.Color.accent)
+        readonly property color coral: "#f7768e"
+        // One trail at a time wears a special colour, starting with lime;
+        // when it finishes the next trail to fire takes the next one.
+        readonly property var specials: ["#9ece6a", "#bb9af7", "#e0af68", "#ff9e64", "#73daca", "#7aa2f7"]
+        property var special: null      // { n, run, color }
+        property int specialNext: 0
+        FrameAnimation {
+          running: root.opened && logoComets.visible
+          onTriggered: { logoComets.t += frameTime; logoComets.requestPaint() }
+        }
+
+        // The outer or inner ring as a rectangle on the lines' centres.
+        function ring(inner) {
+          var c = logoFrame.line, g = logoFrame.gap
+          var o = inner ? c + g + c / 2 : c / 2
+          var r = { x0: o, y0: o, x1: width - o, y1: height - o }
+          r.w = r.x1 - r.x0; r.h = r.y1 - r.y0; r.p = 2 * (r.w + r.h)
+          return r
+        }
+        // Point at distance s clockwise from the ring's top-left corner.
+        function at(r, s) {
+          s = ((s % r.p) + r.p) % r.p
+          if (s < r.w) return { x: r.x0 + s, y: r.y0 }
+          s -= r.w
+          if (s < r.h) return { x: r.x1, y: r.y0 + s }
+          s -= r.h
+          if (s < r.w) return { x: r.x1 - s, y: r.y1 }
+          s -= r.w
+          return { x: r.x0, y: r.y1 - s }
+        }
+        // Where a run must stop: the open stretch it would otherwise cross
+        // (inner ring: the top gap; outer ring: the bottom notch), as a
+        // clockwise interval [g0, g1]. Returns the distance to it along dir.
+        function toGap(e) {
+          var P = e.r.p
+          var d = e.dir > 0 ? e.r.g0 - e.s : e.s - e.r.g1
+          return ((d % P) + P) % P
+        }
+        // The seven entrances: ring, start (distance clockwise), direction.
+        function entrances() {
+          var W = width, H = height, c = logoFrame.line
+          var x7 = logoFrame.b(7, W), x8 = logoFrame.b(8, W), x9 = logoFrame.b(9, W)
+          var y6 = (logoFrame.b(6, H) + logoFrame.b(7, H)) / 2
+          var ro = ring(false), ri = ring(true)
+          ri.g0 = x7 - ri.x0; ri.g1 = x9 - ri.x0
+          ro.g0 = ro.w + ro.h + (ro.x1 - x8); ro.g1 = ro.w + ro.h + (ro.x1 - x7)
+          return [
+            { r: ri, s: x7 - ri.x0, dir: -1, color: cyan },                     // inner gap, left side
+            { r: ri, s: x9 - ri.x0, dir: 1, color: coral },                     // inner gap, right side
+            { r: ro, s: ro.w + ro.h + (ro.x1 - x7), dir: 1, color: coral },     // outer notch, left side
+            { r: ro, s: ro.w + ro.h + (ro.x1 - x8), dir: -1, color: cyan },     // outer notch, right side
+            { r: ro, s: (x7 - c / 2) - ro.x0, dir: 1, color: cyan },            // top joint
+            { r: ro, s: 2 * ro.w + ro.h + (ro.y1 - y6), dir: -1, color: coral }, // left joint
+            { r: ri, s: ri.w + ri.h + (ri.x1 - (x7 - c / 2)), dir: -1, color: coral } // bottom joint
+          ]
+        }
+        // Side of ring r that point q sits on: the normal pointing into the
+        // gap between the lines (inward for the outer ring, outward for the
+        // inner one), or null at a corner.
+        function gapNormal(r, inner, q) {
+          var eps = 0.5, n = null
+          if (Math.abs(q.y - r.y0) < eps) n = { x: 0, y: 1 }
+          else if (Math.abs(q.x - r.x1) < eps) n = { x: -1, y: 0 }
+          else if (Math.abs(q.y - r.y1) < eps) n = { x: 0, y: -1 }
+          else if (Math.abs(q.x - r.x0) < eps) n = { x: 1, y: 0 }
+          if (n && inner) { n.x = -n.x; n.y = -n.y }
+          return n
+        }
+        // Afterglow: light spilling from a beam segment into the gap, fading
+        // across the gap. Lingers longer than the beam (see onPaint).
+        function glow(ctx, r, inner, p0, p1, col, alpha) {
+          var n = gapNormal(r, inner, p0)
+          if (!n || !gapNormal(r, inner, p1) || alpha <= 0.004) return
+          var c = logoFrame.line, g = logoFrame.gap
+          var ax = p0.x + n.x * c / 2, ay = p0.y + n.y * c / 2      // line edge
+          var bx = p1.x + n.x * c / 2, by = p1.y + n.y * c / 2
+          var fx = n.x * g, fy = n.y * g                             // across the gap
+          var grad = ctx.createLinearGradient(ax, ay, ax + fx, ay + fy)
+          // Reaches further across the channel, but the quad ends exactly at
+          // the opposite line, so it never spills past the lines.
+          grad.addColorStop(0, Qt.rgba(col.r, col.g, col.b, alpha))
+          grad.addColorStop(0.55, Qt.rgba(col.r, col.g, col.b, alpha * 0.62))
+          grad.addColorStop(1, Qt.rgba(col.r, col.g, col.b, alpha * 0.3))
+          ctx.fillStyle = grad
+          ctx.beginPath()
+          ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(bx + fx, by + fy); ctx.lineTo(ax + fx, ay + fy)
+          ctx.closePath(); ctx.fill()
+        }
+
+        function mix(a, b, k) {
+          return Qt.rgba(a.r + (b.r - a.r) * k, a.g + (b.g - a.g) * k, a.b + (b.b - a.b) * k, 1)
+        }
+
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.reset()
+          if (width <= 0 || height <= 0) return
+          var list = entrances()
+          var trail = Style.space(200), steps = 36
+          var white = Qt.rgba(1, 1, 1, 1)
+          ctx.lineCap = "butt"
+          ctx.lineWidth = logoFrame.line
+          // Each runs on its own cycle: travel 2.2 s, a short rest, repeat.
+          var travel = 2.2
+          function runOf(n) { var cycle = 2.6 + n * 0.29; var x = t + n * 0.97; return { run: Math.floor(x / cycle), local: x % cycle } }
+          // Release the special colour once its trail's run is over.
+          if (special) {
+            var sr = runOf(special.n)
+            if (sr.run !== special.run || sr.local > travel) { special = null; specialNext = (specialNext + 1) % specials.length }
+          }
+          for (var n = 0; n < list.length; n++) {
+            var e = list[n]
+            var ro = runOf(n), local = ro.local
+            if (local > travel) continue
+            // A trail just setting off takes the special colour if it's free.
+            if (!special && local < 0.12) special = { n: n, run: ro.run, color: specials[specialNext] }
+            var color = special && special.n === n && special.run === ro.run ? Qt.color(special.color) : e.color
+            var k = local / travel
+            // Ease in-out, up to 42% round, stopping short of a gap/notch.
+            var reach = Math.min(e.r.p * 0.42, toGap(e) - logoFrame.line * 0.5)
+            var dist = (k * k * (3 - 2 * k)) * Math.max(0, reach)
+            var fade = Math.min(1, local / 0.25) * Math.min(1, (travel - local) / 0.45)
+            var head = e.s + e.dir * dist
+            var inner = e.r === list[0].r
+            // Glow only inside the channel between the lines: clip to the band
+            // between the outer line's inner edge and the inner line's outer
+            // edge (even-odd), so corners, the app area and outside stay dark.
+            ctx.save()
+            ctx.beginPath()
+            var c = logoFrame.line, g = logoFrame.gap
+            ctx.rect(c, c, width - 2 * c, height - 2 * c)
+            ctx.rect(c + g, c + g, width - 2 * (c + g), height - 2 * (c + g))
+            ctx.fillRule = Qt.OddEvenFill
+            ctx.clip()
+            // Afterglow first (under the beam): reaches 1.6x the trail and
+            // fades slower; the first stretch behind the head blooms whitish.
+            var glowLen = Math.min(trail * 1.6, dist)
+            for (var j = 0; j < steps; j++) {
+              var b0 = j / steps, b1 = (j + 1) / steps
+              var q0 = at(e.r, head - e.dir * b0 * glowLen)
+              var q1 = at(e.r, head - e.dir * b1 * glowLen)
+              var gcol = j < 4 ? mix(white, color, j / 4) : color
+              var ga = fade * (0.55 * Math.pow(1 - b0, 1.1) + (j < 3 ? 0.25 * (1 - j / 3) : 0))
+              glow(ctx, e.r, inner, q0, q1, gcol, ga)
+            }
+            ctx.restore()
+            for (var i = 0; i < steps; i++) {
+              var a0 = i / steps, a1 = (i + 1) / steps
+              var len = Math.min(trail, dist)
+              var p0 = at(e.r, head - e.dir * a0 * len)
+              var p1 = at(e.r, head - e.dir * a1 * len)
+              // White at the head, the colour behind, fading out down the trail.
+              var col = i < 2 ? mix(white, color, i / 2) : color
+              var alpha = fade * Math.pow(1 - a0, 1.6)
+              ctx.strokeStyle = Qt.rgba(col.r, col.g, col.b, alpha)
+              ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke()
+            }
+          }
+        }
+      }
 
       Item {
         id: keyCatcher
@@ -434,9 +696,9 @@ Item {
           Item {
             id: searchBox
             anchors.left: parent.left
-            anchors.right: tabRow.left
+            anchors.right: parent.right
             anchors.top: parent.top
-            anchors.bottom: parent.bottom
+            height: root.headerRowHeight
             clip: true
 
             Text {
@@ -444,8 +706,11 @@ Item {
               textFormat: Text.PlainText
               anchors.left: parent.left
               anchors.right: parent.right
-              anchors.leftMargin: Style.space(10)
-              anchors.rightMargin: Style.space(8)
+              // A quarter of the way from the left edge to centred (the
+              // placeholder's centred offset, quartered). Fixed, so typing just
+              // grows rightwards.
+              anchors.leftMargin: Style.space(10) + Math.max(0, (searchBox.width - Style.space(20) - placeholderMetrics.advanceWidth) / 8)
+              anchors.rightMargin: Style.space(10)
               anchors.verticalCenter: parent.verticalCenter
               text: root.filterText || "Search apps…"
               color: root.foreground
@@ -456,6 +721,13 @@ Item {
               elide: root.filterText ? Text.ElideLeft : Text.ElideRight
             }
 
+            TextMetrics {
+              id: placeholderMetrics
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.heading
+              text: "Search apps…"
+            }
+
             // Blinking text cursor: after the query, or before the placeholder.
             Rectangle {
               id: caret
@@ -463,9 +735,10 @@ Item {
               height: Math.round(Style.font.heading * 1.25)
               radius: width / 2
               anchors.verticalCenter: parent.verticalCenter
+              readonly property real textStart: searchText.x
               x: root.filterText
-                ? searchText.x + Math.min(searchText.contentWidth, searchText.width) + Style.space(1)
-                : searchText.x - width - Style.space(2)
+                ? textStart + Math.min(searchText.contentWidth, searchText.width) + Style.space(1)
+                : textStart - width - Style.space(2)
               color: root.foreground
               visible: root.opened
 
@@ -489,9 +762,10 @@ Item {
 
           Row {
             id: tabRow
+            anchors.left: parent.left
             anchors.right: parent.right
-            anchors.top: parent.top
             anchors.bottom: parent.bottom
+            height: root.headerRowHeight
 
             // Every tab is as wide as the longest label so the rules fall at
             // even intervals.
@@ -510,10 +784,13 @@ Item {
               delegate: Row {
                 id: tab
                 required property var modelData
+                required property int index
                 readonly property bool active: root.category === modelData.id
                 height: tabRow.height
 
+                // Rule between tabs (none before the first).
                 Rectangle {
+                  visible: tab.index > 0
                   width: Math.max(2, Style.space(2))
                   height: Math.round(parent.height * 0.5)
                   anchors.verticalCenter: parent.verticalCenter
@@ -522,8 +799,9 @@ Item {
                   color: Util.alpha(root.foreground, 0.3)
                 }
 
+                // The five tabs share the row evenly (the rules take their bit).
                 Item {
-                  width: Math.ceil(tabMetrics.advanceWidth) + Style.space(32)
+                  width: (tabRow.width - (root.categoryTabs.length - 1) * Math.max(2, Style.space(2))) / root.categoryTabs.length
                   height: parent.height
 
                   Rectangle {
@@ -577,7 +855,10 @@ Item {
             clip: true
             cellWidth: root.cellWidth
             cellHeight: root.cellHeight
-            boundsBehavior: Flickable.StopAtBounds
+            interactive: false                       // TouchScroll handles scrolling
+            boundsBehavior: Flickable.StopAtBounds   // ends glow (TouchScroll)
+            flickDeceleration: 900
+            maximumFlickVelocity: 12000
 
             delegate: Item {
               id: cell
@@ -644,6 +925,8 @@ Item {
               }
             }
           }
+
+          TouchScroll { anchors.fill: resultGrid; view: resultGrid }
 
           Column {
             anchors.centerIn: parent

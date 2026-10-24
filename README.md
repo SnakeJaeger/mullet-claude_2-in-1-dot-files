@@ -44,14 +44,16 @@ Lua config.
 | | |
 |---|---|
 | <img src="screenshots/desktop-01-clean.webp" alt="Floating bar islands over the wallpaper"><br>Floating bar islands over the wallpaper | <img src="screenshots/desktop-02-kitty-dropdown.webp" alt="Terminal dropdown (`SUPER + T`) with the fastfetch greeting"><br>Terminal dropdown (`SUPER + T`) with the fastfetch greeting |
-| <img src="screenshots/desktop-03-launcher.webp" alt="App launcher"><br>App launcher | <img src="screenshots/desktop-04-clipboard.webp" alt="Clipboard, bottom-right, with Clear all"><br>Clipboard, bottom-right, with Clear all |
+| <img src="screenshots/desktop-22-launcher-logo-frame.webp" alt="App launcher (SUPER + R) framed by the Omarchy logo"><br>App launcher (`SUPER + R`) framed by the Omarchy logo | <img src="screenshots/desktop-23-launcher-trails-closeup.webp" alt="Light trails running round the logo frame, glowing into the channel"><br>Light trails run round the frame and glow into its channel |
 | <img src="screenshots/desktop-05-claude-dropdown.webp" alt="Claude Code dropdown (`SUPER + C`), mid-screenshot session"><br>Claude Code dropdown (`SUPER + C`), mid-screenshot session | <img src="screenshots/desktop-06-firefox.webp" alt="Firefox, themed from the Omarchy colours"><br>Firefox, themed from the Omarchy colours |
 | <img src="screenshots/desktop-09-dolphin.webp" alt="Dolphin with the Omarchy KDE theme and icon-only Places"><br>Dolphin with the Omarchy KDE theme and icon-only Places | <img src="screenshots/desktop-10-catfish-search.webp" alt="Catfish dropdown (`SUPER + D`) searching the whole drive"><br>Catfish dropdown (`SUPER + D`) searching the whole drive |
-| <img src="screenshots/desktop-11-keybindings.webp" alt="Keybindings (`SUPER + K`), top-left"><br>Keybindings (`SUPER + K`), top-left | <img src="screenshots/desktop-12-system-menu.webp" alt="System menu (`SUPER + ESCAPE`), bottom-left for touch"><br>System menu (`SUPER + ESCAPE`), bottom-left for touch |
+| <img src="screenshots/desktop-26-go-keybinds.webp" alt="Keybindings (SUPER + K) in the Go menu: searchable, click to run"><br>Keybindings (`SUPER + K`) in the Go menu: searchable, click to run | <img src="screenshots/desktop-12-system-menu.webp" alt="System menu (`SUPER + ESCAPE`), bottom-left for touch"><br>System menu (`SUPER + ESCAPE`), bottom-left for touch |
 | <img src="screenshots/desktop-13-go-menu-file-search.webp" alt="Go menu (`SUPER + SPACE`): typing offers a whole-drive Catfish search"><br>Go menu (`SUPER + SPACE`): typing offers a whole-drive Catfish search | <img src="screenshots/desktop-15-password.webp" alt="Password dialog, risen from the bottom to a third of the way up"><br>Password dialog, risen from the bottom to a third of the way up |
 | <img src="screenshots/desktop-16-info-bar.webp" alt="Info bar (tap SUPER): workspaces with their apps, time, weather, battery, Wi-Fi, Bluetooth and a quote"><br>Info bar (tap `SUPER`): workspaces and their apps, time, weather, status and a quote | <img src="screenshots/desktop-17-workspace-flash.webp" alt="Workspace number flash while the bar is hidden"><br>Workspace number flash while the bar is hidden |
 | <img src="screenshots/desktop-18-display-refresh-boost.webp" alt="Display popup: refresh rate, power-profile hint, toggles, brightness and boost"><br>Display popup: refresh rate, toggles, brightness with a boost button | <img src="screenshots/desktop-19-power-profiles.webp" alt="Battery popup with four power profiles, including Less balanced"><br>Battery popup: four power profiles, each with its refresh rate |
-| <img src="screenshots/desktop-20-wifi-dns-vpn.webp" alt="Wi-Fi popup with Quad9 DNS and Mullvad / Tailscale toggles"><br>Wi-Fi popup: Quad9 DNS and Mullvad / Tailscale toggles (network names blurred) | |
+| <img src="screenshots/desktop-20-wifi-dns-vpn.webp" alt="Wi-Fi popup with Quad9 DNS and Mullvad / Tailscale toggles"><br>Wi-Fi popup: Quad9 DNS and Mullvad / Tailscale toggles (network names blurred) | <img src="screenshots/desktop-21-mullvad-terminal.webp" alt="Mullvad in a terminal dropdown (SUPER + M)"><br>Mullvad in a terminal dropdown (`SUPER + M`; relay and IP blurred) |
+| <img src="screenshots/desktop-24-go-menu-duel.webp" alt="Go menu with the stick-figure sword fight under Update"><br>Go menu, with an easter-egg duel under Update | <img src="screenshots/desktop-25-go-apps-panel.webp" alt="Go menu Apps panel: app grid with categories"><br>Go menu → Apps: the app grid in the menu's own space |
+| <img src="screenshots/desktop-27-notifications.webp" alt="Notifications bottom-right with a countdown border"><br>Notifications: bottom-right, × to dismiss, countdown border | <img src="screenshots/desktop-28-wallpaper-picker.webp" alt="Wallpaper picker with the double-click toggle"><br>Wallpaper picker: two-finger scrolling and a double-click toggle |
 
 ### Tablet (the party)
 
@@ -124,10 +126,20 @@ blur behind them.
 ### Look and feel
 - All bar popups (calendar, weather, audio, network…), the volume and
   brightness pop-ups, and tooltips are **borderless**. The Go menu is too.
-- Cyan accent theme overlay on Tokyo Night with darker backgrounds, and a
-  cyan→coral gradient window border.
+- **Tokyo Aura Midnight** (`config/omarchy/themes/tokyo-aura-midnight/`): Tokyo
+  Night with near-black backgrounds and a cyan accent, as its own theme (stock
+  Tokyo Night is left alone), and a cyan→coral gradient window border.
+- **Touchpad scrolling that feels like GNOME, or better** (`TouchScroll.qml`)
+  in the launcher, Go menu, Apps and Keybinds panels and clipboard: moves with
+  the desktop's direction at 3.5× finger travel, coasts after you lift off,
+  fingers back down brake it, and the ends flash a cyan edge glow. (Qt treats a
+  touchpad scroll as a finger drag with no momentum, so this takes it over.)
+- **Sublime Text** follows the theme too: a colour scheme template, near-black
+  tab strip and see-through command palette (`Ctrl + P`).
 - Tuned gaps so windows line up with the floating bar.
-- Launcher "pop" animation (90% → 105% → 100%).
+- **Notifications** (`daa.notifications`): bottom-right, fly in from the
+  corner, stay 30 s (hover pauses), an × or `SUPER + Z` dismisses, and the
+  border counts down: a white-headed pink line runs clockwise from 9 o'clock.
 - Nautilus: Backspace goes back a folder, via a small nautilus-python
   extension (`local/share/nautilus-python/extensions/backspace_back.py`).
 - Screensaver dims the OLED to 20% and restores 80% on exit.
@@ -151,6 +163,16 @@ by L4ki, rebuilt in plain QtQuick without Plasma, with a user switcher.
   4K background isn't copied here: grab `background.jpg` from
   [L4ki's Infinity-SDDM](https://github.com/L4ki/Infinity-Plasma-Themes/tree/main/Infinity-SDDM).
   See the folder's README.
+
+### Shared guest account
+A second login (`guest`) for letting other people use the laptop (GNS3 and
+Tailscale for a network lab) with no admin rights and no access to your files.
+It gets a copy of this desktop minus browsers, password manager, git
+identity, phone pairing, remote-desktop profiles and AI tools; the Go menu
+spots it by `$USER` and shows only GNS3, Tailscale and Mullvad (terminal
+version only) with the server and phone cards greyed out. Whoever clicks the
+Tailscale toggle becomes its operator (`tailscale-claim`). Autologin is off,
+and the login screen's ‹ › switcher picks the account.
 
 ### Info bar (tap `SUPER`)
 A tap of `SUPER` on its own fades in a card at the bottom middle of the
@@ -182,7 +204,10 @@ ties a refresh rate to each power profile and adds a fourth profile:
 | Performance | performance | 120 Hz fixed |
 
 Like Omarchy's profiles, the choice is remembered separately for charger
-and battery, so unplugging can drop you to 60 Hz on its own. A small watcher
+and battery, so unplugging can drop you to 60 Hz on its own. Battery choices
+last one session: each login starts on battery at Less balanced. Unplugged at
+30% or less, Less balanced and Performance drop to Balanced (60 Hz) once per
+discharge, with a notification. A small watcher
 (`power-refresh watch`, started from `autostart.lua`) re-applies the rate
 when the profile or power source changes, so Omarchy's own menu and
 `powerprofilesctl` still work. Startup (`monitors.lua`) and tablet rotation
@@ -217,7 +242,8 @@ instant. Scripts and menus can summon one too:
 | `SUPER + P` | Bitwarden, pinned to the top-right corner and sliding in from the right |
 | `SUPER + D` | Catfish file search over the whole drive (`/`, not just home) |
 | `SUPER + ALT + W` | GNOME Weather; also a left click on the bar's weather |
-| `SUPER + M` | Mullvad VPN, rising from the bottom (`rise = 1 / 3`) |
+| `SUPER + M` | Mullvad in a terminal (`~/.local/bin/mullvad-tui`): status, account days left, connect, quick-connect to custom lists and recent locations, a searchable location picker |
+| `SUPER + SHIFT + M` | The Mullvad app, rising from the bottom (`rise = 1 / 3`). It only runs while it's shown: hiding it quits it (`quit_on_hide`), since it crash-reported when logout killed it |
 
 Each entry can set its size (`px` or screen fractions), pin itself to the
 right edge (`right = 10`) and pick its own slide direction (`slide =
@@ -236,11 +262,19 @@ searching.
   lab box; set `LAB_PROFILE` to your Remmina profile), a **Server** card
   (services from `~/.config/lab-services/services`), a **System** card (CPU,
   RAM, disk, temperature, uptime; click for btop) and a **Phone** card (KDE
-  Connect). The cards bounce in from the left, and the footer buttons (Apps,
-  Terminal, Keys, Tablet, System) are dealt out like cards. Try
-  `SUPER + CTRL + ALT + SPACE` for the version without brakes.
-- **Keybindings** (`SUPER + K`): borderless, hangs off the top-left corner
-  and slides in from the left.
+  Connect). The cards bounce in from the left, the sidebar icons sag and spring
+  back like a slinky, and the footer buttons (Apps, Keybinds, Tablet, System)
+  are dealt out like cards. **Apps** turns the menu's space into an app grid
+  with the launcher's categories; **Keybinds** shows every binding, searchable,
+  and a click runs it (right-click opens `bindings.lua` in Sublime). Tab walks
+  the footer. Try `SUPER + CTRL + ALT + SPACE` for the version without brakes,
+  and look out for the duel under Update (1 in 12, or type `omarchy!`).
+- **Keybindings** (`SUPER + K`): opens the Go menu on its Keybinds panel;
+  `SUPER + SHIFT + K` is the big standalone list.
+- **App launcher** (`SUPER + R`): a square 5 × 6 grid framed by the Omarchy
+  logo, drawn to scale from the logo's 13 × 13 grid. Light trails start at the
+  logo's seven entrances, lead white, then cyan, coral or one rotating Tokyo
+  Night colour, glow into the channel between the lines, and never jump a gap.
 - **Password dialog** (`daa.polkit`): rises from the bottom and rests a third
   of the way up. The speakers don't work yet, so it also **spins the fans
   up** (`~/.local/bin/attention-fans`: half the cores busy, at most 20 s,
@@ -248,9 +282,9 @@ searching.
 - **System / power menu** (`SUPER + ESCAPE`, power button): borderless, in the
   bottom-left corner, sliding in from the left. Escape is top-left on the
   keyboard, so the options are a short reach away on the touchscreen.
-- **Clipboard** (`SUPER + V`, `daa.clipboard`): borderless, bottom-right,
-  slides in from the right, with a **Clear all** button (asks first; same as
-  `Shift + Delete`).
+- **Clipboard** (`SUPER + V`, `daa.clipboard`): borderless, middle of the left
+  edge, slides in from the left, with a **Clear all** button (asks first; same
+  as `Shift + Delete`).
 - **Re-press to close, other key to switch.** Every menu key goes through
   `~/.local/bin/menu-toggle`: pressing a menu's own key closes it, and
   pressing another menu's key switches straight to that menu. `daa.menu`
@@ -350,10 +384,10 @@ These work in both modes and adapt to tablet mode on their own:
 | Plugin | Role |
 |---|---|
 | `daa.menu` | Every menu: Go menu, tablet menu, Quick toggles, workspace switcher. Opens against the bar, has a touch back-arrow and a shortcut sidebar (Home, Documents, Desktop, Screensaver, Log out, Shut down) |
-| `daa.launcher` | App launcher, with a scroll rail in tablet mode |
+| `daa.launcher` | App launcher framed by the Omarchy logo, touch scrolling, a scroll rail in tablet mode |
 | `daa.osd` | On-screen display |
 | `daa.background` | Wallpaper renderer, plus tap-to-dismiss in tablet mode |
-| `daa.clipboard` | Clipboard manager: borderless, bottom-right, Clear all button |
+| `daa.clipboard` | Clipboard manager: borderless, left edge, Clear all button |
 | `daa.polkit` | Password dialog: rises from the bottom, spins the fans up while waiting |
 | `daa.tray` | System tray whose collapsed drawer takes no room |
 | `daa.infobar` | Info bar on a tap of `SUPER`, plus the workspace flash |
@@ -364,6 +398,8 @@ These work in both modes and adapt to tablet mode on their own:
 | `daa.agents` | Claude usage; left click toggles the Claude Code dropdown |
 | `daa.weather` | Weather; left click toggles the GNOME Weather dropdown |
 | `daa.clock` | Clock and calendar popup (with the Reminder chip) |
+| `daa.notifications` | Notifications: bottom-right, 30 s, × to dismiss, countdown border |
+| `daa.image-picker` | Wallpaper / theme picker with touchpad scrolling and a double-click toggle |
 
 ---
 
@@ -428,7 +464,7 @@ CSS target a window by name if the app sets one, and Catfish doesn't.)
 **Shared:** `daa.menu`, `daa.launcher`, `daa.osd`, `daa.background`,
 `daa.clipboard`, `daa.polkit`, `daa.tray`, `daa.infobar`, `daa.network`,
 `daa.power`, `daa.monitor`, `daa.audio`, `daa.agents`, `daa.weather`,
-`daa.clock`.
+`daa.clock`, `daa.notifications`, `daa.image-picker`.
 
 | Path | Mode | Purpose |
 |---|---|---|
@@ -437,7 +473,8 @@ CSS target a window by name if the app sets one, and Catfish doesn't.)
 | `~/.config/omarchy/shell.toml` | both | Theme overrides (borderless popups and tooltips) |
 | `~/.config/omarchy/extensions/omarchy-menu.jsonc` | both | Menu entries (`tablet.*` = tablet) |
 | `~/.config/omarchy/themed/` | both | Theme templates: GTK, Firefox, KDE, qt6ct, Catfish, shell |
-| `~/.config/omarchy/themes/tokyo-night/` | both | Theme overlay: cyan accent, darker backgrounds |
+| `~/.config/omarchy/themes/tokyo-aura-midnight/` | both | Tokyo Aura Midnight: near-black Tokyo Night with a cyan accent (add your own `backgrounds/`) |
+| `~/.config/sublime-text/Packages/User/`, `themed/*.sublime-*.tpl` | both | Sublime Text theme, `Ctrl + P` palette, no tab arrows |
 | `~/.config/omarchy/hooks/theme-set.d/kde-qt-theme` | both | Applies the Qt/KDE theme on every theme change |
 | `~/.local/bin/menu-toggle` | both | Menu keys: re-press closes, other key switches |
 | `~/.local/bin/file-search` | both | Opens the Catfish dropdown searching for its arguments |
@@ -447,6 +484,10 @@ CSS target a window by name if the app sets one, and Catfish doesn't.)
 | `~/.local/bin/brightness-step` | both | Brightness keys, slider scale and boost |
 | `~/.local/bin/infobar-status` | both | JSON for the info bar |
 | `~/.local/bin/mullvad-toggle` | both | Wi-Fi popup's Mullvad toggle (opens the app when logged out) |
+| `~/.local/bin/mullvad-tui` | both | Mullvad in a terminal (`SUPER + M`) |
+| `~/.local/bin/keybind-run` | both | Runs a keybinding picked in the Go menu's Keybinds panel |
+| `~/.local/bin/firefox-theme-link` | both | Links the themed Firefox CSS into every profile at login |
+| `~/.local/bin/tailscale-toggle`, `system/usr/local/bin/tailscale-claim`, `system/etc/sudoers.d/tailscale-claim` | both | Tailscale on/off for whoever is logged in (e.g. a shared guest account) |
 | `system/usr/local/bin/omarchy-dns-quad9`, `system/etc/sudoers.d/omarchy-dns-quad9` | both | Quad9 DNS preset (DNS-over-TLS, Cloudflare fallback) and its password-free sudo rule |
 | `~/.local/bin/lab-status` | desktop | Status line for the Go menu's lab card (set `LAB_PROFILE` to your Remmina profile) |
 | `~/.config/hypr/dropdowns.lua`, `scratchpads.lua`, `workspace_collapse.lua`, `screensaver_brightness.lua`, `looknfeel.lua`, `bindings.lua` | both | Hyprland behaviour |
@@ -491,10 +532,13 @@ touch and pen, panel `eDP-1`). Change the variables at the top of
   background and indicators are copies of Omarchy's built-ins. After big
   Omarchy updates, compare them with the originals in
   `/usr/share/omarchy/shell/` and port any fixes you want.
-- **Scratchpad flash.** On an empty workspace, closing a bar panel can make a
-  hidden scratchpad flash for a split second before it's hidden again.
-  Hyprland hands focus back to it when nothing else can take it. Very rarely
-  one pops up on its own; `scratchpads.lua` logs everything to catch it.
+- **Dropdowns popping up after menus.** When a menu or bar popup closes,
+  Hyprland gives focus back to the last focused window, and if that's in a
+  hidden dropdown it shows it. `scratchpads.lua` parks focus on a regular
+  window as a menu opens and, on an empty workspace where there's nothing to
+  park on, hides any dropdown that appears unasked within half a second of a
+  menu closing. It can still flash for a frame; everything is logged to catch
+  what's left.
 - **Hot reload goes stale.** Saving a plugin file sometimes leaves the old
   code running alongside the new (even a second copy firing its own
   pop-ups). `omarchy restart shell` fixes it.

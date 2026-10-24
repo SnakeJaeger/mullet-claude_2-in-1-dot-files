@@ -1,0 +1,5 @@
+# Lets each listed user make themselves Tailscale's operator (so the bar and
+# Go menu toggles work for whoever is logged in, e.g. a shared guest account).
+# Only this root-owned script; see /usr/local/bin/tailscale-claim.
+# Install with: sudo install -m 0440 tailscale-claim /etc/sudoers.d/ (after visudo -cf)
+YOUR_USER, guest ALL=(root) NOPASSWD: /usr/local/bin/tailscale-claim

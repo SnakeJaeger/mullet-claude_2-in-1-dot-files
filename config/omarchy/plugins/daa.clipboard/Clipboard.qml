@@ -321,7 +321,7 @@ Item {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
-    onVisibleChanged: if (visible) slideIn.restart()
+    onVisibleChanged: if (visible) slideIn.begin()
 
     Rectangle {
       anchors.fill: parent
@@ -338,20 +338,25 @@ Item {
       width: root.cardWidth
       height: root.cardHeight
       radius: root.cornerRadius
-      // Borderless, in the bottom right corner, sliding in from the right.
-      x: panel.width - 10 - width
-      y: panel.height - 10 - height
+      // Borderless, at the middle of the left edge, sliding in from the left.
+      x: 10
+      y: Math.round((panel.height - height) / 2)
       color: root.background
       borderSpec: Border.none()
       property real slide: 0
-      transform: Translate { x: card.slide * (panel.width - card.x) }
-      NumberAnimation on slide {
+      transform: Translate { x: -card.slide * (card.x + card.width) }
+      // daa: stepped per rendered frame (at most 1/60 s each) instead of by
+      // wall clock, so a busy first frame -- the surface mapping, the list
+      // building -- delays the slide rather than skipping part of it.
+      FrameAnimation {
         id: slideIn
-        running: false
-        from: 1
-        to: 0
-        duration: 320
-        easing.type: Easing.OutQuint
+        property real t: 0
+        function begin() { t = 0; card.slide = 1; start() }
+        onTriggered: {
+          t = Math.min(1, t + Math.min(frameTime, 1 / 60) / 0.32)
+          card.slide = Math.pow(1 - t, 5)   // OutQuint
+          if (t >= 1) stop()
+        }
       }
       padding: root.contentMargin
 
@@ -510,7 +515,10 @@ Item {
                 model: displayModel
                 clip: true
                 spacing: Style.space(4)
-                boundsBehavior: Flickable.StopAtBounds
+                interactive: false                       // TouchScroll handles scrolling
+                boundsBehavior: Flickable.StopAtBounds   // ends glow (TouchScroll)
+                flickDeceleration: 900
+                maximumFlickVelocity: 12000
 
                 delegate: Rectangle {
                   id: row
@@ -540,6 +548,8 @@ Item {
                       width: visible ? parent.height : 0
                       height: parent.height
                       source: parent.parent.previewImage
+                      // daa: decode screenshots at thumbnail size, not full size.
+                      sourceSize.height: Math.ceil(height * Screen.devicePixelRatio)
                       fillMode: Image.PreserveAspectFit
                       asynchronous: true
                       smooth: true
@@ -575,6 +585,8 @@ Item {
                   }
                 }
               }
+
+              TouchScroll { anchors.fill: resultList; view: resultList }
             }
 
             Item {
@@ -617,6 +629,8 @@ Item {
                 anchors.topMargin: 0
                 anchors.bottomMargin: 0
                 source: parent.activeRow ? parent.activeRow.previewImage : ""
+                // daa: decode at the preview pane's size, not full size.
+                sourceSize.width: Math.ceil(width * Screen.devicePixelRatio)
                 fillMode: Image.PreserveAspectFit
                 verticalAlignment: Image.AlignTop
                 asynchronous: true
