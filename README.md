@@ -136,6 +136,22 @@ blur behind them.
   shut, and `~/.local/bin/lid-battery-guard` (a user service) suspends only
   when the lid is shut, the charger is out and the battery is at 20% or less.
 
+### Login screen
+Login screen design from [Infinity-Plasma-Themes](https://github.com/L4ki/Infinity-Plasma-Themes)
+by L4ki, rebuilt in plain QtQuick without Plasma, with a user switcher.
+
+- Galaxy background, clock, round avatar, password pill and Sleep / Restart /
+  Shut Down, like the original, but with no `plasma-workspace` dependency.
+- **‹ name ›** above the password: ← → ↑ ↓ or Tab (or the arrows) pick the
+  account. Omarchy's own login screen only ever logs in the last user.
+- Theme: `system/usr/share/sddm/themes/infinity-omarchy/`, selected by
+  `system/etc/sddm.conf.d/99-zz-theme.conf` (SDDM lets the last file win, and
+  Omarchy's `99-omarchy-login.conf` also sets one).
+- That folder is **GPL-3.0+**, like the original, and ships its license. The
+  4K background isn't copied here: grab `background.jpg` from
+  [L4ki's Infinity-SDDM](https://github.com/L4ki/Infinity-Plasma-Themes/tree/main/Infinity-SDDM).
+  See the folder's README.
+
 ### Info bar (tap `SUPER`)
 A tap of `SUPER` on its own fades in a card at the bottom middle of the
 screen (`daa.infobar`): the workspaces in use with icons of the apps on them
@@ -506,6 +522,12 @@ touch and pen, panel `eDP-1`). Change the variables at the top of
 ## License
 
 [MIT](LICENSE). Take whatever's useful.
+
+Exception: the login screen theme
+(`system/usr/share/sddm/themes/infinity-omarchy/`) is GPL-3.0+, as it's based
+on L4ki's [Infinity-Plasma-Themes](https://github.com/L4ki/Infinity-Plasma-Themes).
+Its own [LICENSE](system/usr/share/sddm/themes/infinity-omarchy/LICENSE)
+applies there.
 
 ---
 

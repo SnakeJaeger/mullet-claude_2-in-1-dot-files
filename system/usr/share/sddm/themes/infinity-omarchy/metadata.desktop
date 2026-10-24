@@ -1,0 +1,12 @@
+[SddmGreeterTheme]
+Name=Infinity (Omarchy, no Plasma)
+Description=Infinity-SDDM-6's look rebuilt in plain QtQuick, with a user switcher
+Author=l4k1 (original design, GPL-3.0+); rebuilt for this machine
+License=GPL-3.0+
+Type=sddm-theme
+Version=1.0
+MainScript=Main.qml
+ConfigFile=theme.conf
+Theme-Id=infinity-omarchy
+Theme-API=2.0
+QtVersion=6
