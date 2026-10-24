@@ -16,7 +16,12 @@
 local dropdowns = {
   -- Geometry copied from where it was hand-placed (119x35 cells at font 10)
   { key = "SUPER + T", name = "terminal", title = "Dropdown terminal", cmd = [[alacritty --class dropdown.terminal -o font.size=10 -o 'env.DROPDOWN_TERMINAL="1"']], px = { 990, 667 }, y = -22, preload = true },
-  { key = "SUPER + C", name = "claude", title = "Dropdown Claude Code", cmd = "alacritty --class dropdown.claude -e claude", preload = true },
+  -- In Ptyxis rather than Alacritty: GTK4 gives it kinetic touchpad scrolling.
+  -- Ptyxis can't set its own class either (see `match` below); -s keeps it a
+  -- separate instance from any regular Ptyxis window.
+  { key = "SUPER + C", name = "claude", title = "Dropdown Claude Code", cmd = "ptyxis -s -- claude", match = "org.gnome.Ptyxis",
+    -- Hand-placed with the header bar pushed up off the top of the screen.
+    px = { 1107, 685 }, x = 181, y = -45, preload = true },
   { key = "SUPER + I", name = "btop", title = "Dropdown btop", cmd = "alacritty --class dropdown.btop -e btop", preload = true },
   -- Nautilus can't set its own class, so `match` claims the next window of
   -- that class instead (see below).
@@ -46,12 +51,13 @@ local function dims(dropdown)
   return w, h, (1 - w) / 2, dropdown.y or 50
 end
 
--- Slide special workspaces down from the top instead of fading them in.
+-- Slide special workspaces down from the top instead of fading them in
+-- ("top": plain slidevert comes up from the bottom since Hyprland 0.56).
 -- Workspace rules can't override this for one special workspace, so each
 -- toggle sets the style first; the hide that follows (here or from
 -- scratchpads.lua) reuses it and slides back out the same way.
 local function slide_style(dropdown)
-  hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 4, bezier = "easeOutQuint", style = dropdown and dropdown.slide or "slidevert" })
+  hl.animation({ leaf = "specialWorkspace", enabled = true, speed = 4, bezier = "easeOutQuint", style = dropdown and dropdown.slide or "slidevert top" })
 end
 slide_style()
 
@@ -63,6 +69,8 @@ local function place(dropdown, w, h)
     ww, wh = math.min(dropdown.px[1], math.floor(w * 0.96)), dropdown.px[2]
   end
   local x = (w - ww) // 2
+  -- A fixed x only while it fits (not in portrait after a rotation).
+  if dropdown.x and dropdown.x + ww <= w then x = dropdown.x end
   if dropdown.right then x = w - ww - dropdown.right end
   if dropdown.rise then fy = math.floor(h * (1 - dropdown.rise) - wh / 2) end
   return ww, wh, x, fy
@@ -178,6 +186,15 @@ hl.on("window.open", function(window)
   hl.dispatch(hl.dsp.window.resize({ window = window, x = ww, y = wh }))
   hl.dispatch(hl.dsp.window.move({ window = window, x = monitor.x + x, y = monitor.y + y }))
   hl.dispatch(hl.dsp.window.move({ window = window, workspace = "special:dropdown-" .. dropdown.name, follow = false }))
+  -- Changing workspace pulls a window that hangs off the screen (y < 0) back
+  -- on, so place it again, and once more after it has settled.
+  local function reposition()
+    if alive(window.address) then
+      hl.dispatch(hl.dsp.window.move({ window = "address:" .. window.address, x = monitor.x + x, y = monitor.y + y }))
+    end
+  end
+  reposition()
+  hl.timer(reposition, { timeout = 300, type = "oneshot" })
   if silent[window.class] then
     silent[window.class] = nil
     return

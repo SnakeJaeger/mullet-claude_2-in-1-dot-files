@@ -236,7 +236,7 @@ instant. Scripts and menus can summon one too:
 | Key | App |
 |---|---|
 | `SUPER + T` | Terminal (Alacritty) |
-| `SUPER + C` | Claude Code |
+| `SUPER + C` | Claude Code (in Ptyxis for kinetic touchpad scrolling; header bar hidden above the screen) |
 | `SUPER + I` | btop |
 | `SUPER + E` | Files (Nautilus); also the tablet menu's and app grid's Files buttons |
 | `SUPER + P` | Bitwarden, pinned to the top-right corner and sliding in from the right |
