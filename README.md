@@ -54,6 +54,7 @@ Lua config.
 | <img src="screenshots/desktop-20-wifi-dns-vpn.webp" alt="Wi-Fi popup with Quad9 DNS and Mullvad / Tailscale toggles"><br>Wi-Fi popup: Quad9 DNS and Mullvad / Tailscale toggles (network names blurred) | <img src="screenshots/desktop-21-mullvad-terminal.webp" alt="Mullvad in a terminal dropdown (SUPER + M)"><br>Mullvad in a terminal dropdown (`SUPER + M`; relay and IP blurred) |
 | <img src="screenshots/desktop-24-go-menu-duel.webp" alt="Go menu with the stick-figure sword fight under Update"><br>Go menu, with an easter-egg duel under Update | <img src="screenshots/desktop-25-go-apps-panel.webp" alt="Go menu Apps panel: app grid with categories"><br>Go menu → Apps: the app grid in the menu's own space |
 | <img src="screenshots/desktop-27-notifications.webp" alt="Notifications bottom-right with a countdown border"><br>Notifications: bottom-right, × to dismiss, countdown border | <img src="screenshots/desktop-28-wallpaper-picker.webp" alt="Wallpaper picker with the double-click toggle"><br>Wallpaper picker: two-finger scrolling and a double-click toggle |
+| <img src="screenshots/desktop-29-konami-comets.webp" alt="The Konami code typed into the quick search sets off a comet storm across the screen"><br>*"A bloody good time."* — Basil Fawlty<br>The Konami code in the quick search (tap `SUPER`) sets off a comet storm | |
 
 ### Tablet (the party)
 
