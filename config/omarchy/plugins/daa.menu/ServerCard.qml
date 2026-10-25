@@ -7,7 +7,7 @@ import qs.Ui
 
 // Go menu server card, between the lab and phone cards: the self-hosted
 // services on the lab box (~/.config/lab-services/services: Jellyfin, Immich,
-// calendar), each a tile with an up/down dot. Polls ~/.local/bin/server-status
+// calendar) plus Remmina (VNC port), each a tile with an up/down dot. Polls ~/.local/bin/server-status
 // every 4s while `active` (menu open). Click a tile: open its web page.
 Item {
   id: card
@@ -22,8 +22,11 @@ Item {
 
   property var status: null
   readonly property var services: status && status.services ? status.services : []
+  readonly property bool remoteUp: !!(status && status.remote)
+  // The services plus the Remmina tile (VNC port open).
+  readonly property int total: services.length + 1
   readonly property int upCount: {
-    var n = 0
+    var n = remoteUp ? 1 : 0
     for (var i = 0; i < services.length; i++) if (services[i].up) n++
     return n
   }
@@ -61,7 +64,7 @@ Item {
     anchors.margins: Style.space(10)
     spacing: Style.space(6)
 
-    // Server              1 of 3 up
+    // Server              1 of 4 up
     Item {
       width: parent.width
       height: Style.font.body + Style.space(4)
@@ -80,8 +83,7 @@ Item {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         text: !card.status ? "checking…"
-          : card.services.length === 0 ? "no services listed"
-          : card.upCount + " of " + card.services.length + " up"
+          : card.upCount + " of " + card.total + " up"
         color: card.foreground
         font.family: card.fontFamily
         font.pixelSize: Style.font.body
@@ -170,18 +172,36 @@ Item {
           anchors.centerIn: parent
           spacing: Style.space(3)
 
-          Text {
+          Item {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "󰍹"
-            color: remminaArea.containsMouse ? card.accent : card.foreground
-            font.family: "JetBrainsMono Nerd Font"
-            font.pixelSize: Math.round(Style.font.heading * 1.15)
+            width: remminaIcon.implicitWidth
+            height: remminaIcon.implicitHeight
+
+            Text {
+              id: remminaIcon
+              text: "󰍹"
+              color: remminaArea.containsMouse ? card.accent : card.foreground
+              opacity: card.remoteUp ? 1 : 0.45
+              font.family: "JetBrainsMono Nerd Font"
+              font.pixelSize: Math.round(Style.font.heading * 1.15)
+            }
+
+            Rectangle {
+              x: parent.width - width / 2
+              y: -height / 4
+              width: Style.space(7)
+              height: width
+              radius: width / 2
+              color: card.remoteUp ? card.accent : "transparent"
+              border.width: card.remoteUp ? 0 : 1
+              border.color: Util.alpha(card.foreground, 0.45)
+            }
           }
           Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: "Remmina"
             color: card.foreground
-            opacity: 0.9
+            opacity: card.remoteUp ? 0.9 : 0.58
             font.family: card.fontFamily
             font.pixelSize: Style.font.caption
           }

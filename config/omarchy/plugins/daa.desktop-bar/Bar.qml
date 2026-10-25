@@ -1255,6 +1255,22 @@ Item {
     function syncHidden(): void {
       barHiddenProbe.running = true
     }
+
+    // Centre of a widget's icon in global layout coordinates ("x,y"), for
+    // gliding the cursor to it (~/.local/bin/cursor-to-tray). Empty if the
+    // widget isn't on a bar.
+    function iconPos(id: string): string {
+      var items = root.moduleWidgets(id)
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i]
+        if (!item || !item.visible || item.width <= 0) continue
+        var p = item.mapToItem(null, item.width / 2, item.height / 2)
+        var win = item.QsWindow.window
+        var sx = win && win.screen ? win.screen.x : 0, sy = win && win.screen ? win.screen.y : 0
+        return Math.round(sx + p.x) + "," + Math.round(sy + p.y)
+      }
+      return ""
+    }
   }
 
   Variants {
@@ -1526,6 +1542,27 @@ Item {
           width: rightModules.width + root.pillPadding * 2
         }
 
+        // Square-cornered, unlike the other islands, and the bar's full
+        // height while the logo is grown (its `grow`), for room around it.
+        // daa.desktop-shortcuts traces the same shape.
+        BarPill {
+          readonly property Item logoWidget: {
+            logoModules.width  // re-check as the widget loads / grows
+            var items = root.moduleWidgets("daa.desktop-shortcuts")
+            for (var i = 0; i < items.length; i++) {
+              for (var p = items[i]; p; p = p.parent) if (p === logoModules) return items[i]
+            }
+            return null
+          }
+          readonly property real grow: logoWidget && logoWidget.grow !== undefined ? logoWidget.grow : 0
+          visible: logoModules.width > 0
+          x: logoModules.x - root.pillPadding
+          width: logoModules.width + root.pillPadding * 2
+          y: root.pillInset * (1 - grow)
+          height: parent.height - root.pillInset * 2 * (1 - grow)
+          radius: 0
+        }
+
         BarPill {
           visible: appModules.width > 0
           x: appModules.x - root.pillPadding
@@ -1540,12 +1577,22 @@ Item {
 
         CenterModules { id: centerModules; anchors.fill: parent }
 
-        // Follows the left island, one island gap away.
+        // The shortcuts logo, its own island right after the left island.
+        ModuleList {
+          id: logoModules
+          entries: root.logoEntries
+          region: "logo"
+          anchors.left: leftModules.right
+          anchors.leftMargin: Style.space(8) + root.pillPadding * 2
+          anchors.verticalCenter: parent.verticalCenter
+        }
+
+        // Follows the logo island, one island gap away.
         ModuleList {
           id: appModules
           entries: root.appEntries
           region: "app"
-          anchors.left: leftModules.right
+          anchors.left: logoModules.right
           anchors.leftMargin: Style.space(8) + root.pillPadding * 2
           anchors.verticalCenter: parent.verticalCenter
           Component.onCompleted: barWindow.appIsland = appModules
@@ -1562,7 +1609,7 @@ Item {
         ModuleList {
           id: middleModules
           readonly property real gapStart: (appModules.width > 0
-            ? appModules.x + appModules.width : leftModules.x + leftModules.width) + root.pillPadding
+            ? appModules.x + appModules.width : logoModules.x + logoModules.width) + root.pillPadding
           readonly property real gapEnd: centerModules.pill && centerModules.pill.visible
             ? centerModules.pill.x : parent.width / 2
           entries: root.middleEntries
@@ -1756,6 +1803,7 @@ Item {
   // Extra islands outside the shell.json layout (its schema only knows
   // left/center/right), so their entries live here. The app island follows
   // the left island; the middle island sits between the center and right.
+  readonly property var logoEntries: [{ id: "daa.desktop-shortcuts" }]
   readonly property var appEntries: [{ id: "daa.desktop-app-name" }]
   readonly property var middleEntries: [{ id: "daa.desktop-media" }]
   readonly property var hoverOpenIds: [

@@ -265,7 +265,7 @@ Item {
   // The lab card (LabCard.qml) and the system card (StatsCard.qml) stack in
   // a column right of the list; the footer runs under both.
   readonly property int labCardHeight: Style.space(110)
-  readonly property int statsCardHeight: Style.space(122)
+  readonly property int statsCardHeight: Style.space(140)
   readonly property bool showGoDash: root.goLayout
   readonly property int goDashWidth: Style.space(250)
   readonly property int goDashGap: Style.space(12)
@@ -415,6 +415,9 @@ Item {
   // list. Shows on about 1 in 12 openings, or when "omarchy!" is typed (plain
   // "omarchy" is a real search: it finds Omarchy's own page).
   property bool duelOn: false
+  // ABACABB blood mode (daa.search) is on: the accent is its coral. Then the
+  // duel always shows and ends after 3 s in a (bloodless) beheading.
+  readonly property bool bloodMode: Qt.colorEqual(Commons.Color.accent, "#e0607a")
 
   property bool goApps: false
   // Keybinds panel (footer Keybinds): the SUPER+K list, smaller, in the same
@@ -465,7 +468,9 @@ Item {
     if (root.goKeys) root.setGoKeys(false)
   }
   property string appsCategory: ""
+  // "" = All, lit whenever no category is picked (e.g. when the panel opens).
   readonly property var appsCategoryTabs: [
+    { id: "", label: "All" },
     { id: "web", label: "Web" },
     { id: "utility", label: "Utility" },
     { id: "create", label: "Create" },
@@ -864,16 +869,28 @@ Item {
   // The apps provider is QML-native: rows come from the shared AppLibrary
   // (DesktopEntries) instead of a bash enumeration, so they carry image
   // icons, launch feedback, and uninstall support like the launcher.
+  // The Go menu isn't handed the AppLibrary (root.appLibrary is null), so
+  // without it the rows come straight from DesktopEntries, minus the same
+  // hidden entries as the Apps panel (appsHidden / appsSessionHidden).
   function mergeAppRows() {
-    if (!root.appLibrary) return
-
-    var rows = root.appLibrary.sortedEntries("")
+    var rows = []
+    if (root.appLibrary) {
+      rows = root.appLibrary.sortedEntries("")
+    } else {
+      var values = DesktopEntries.applications.values || []
+      for (var v = 0; v < values.length; v++) {
+        var desktop = values[v]
+        if (!desktop || desktop.noDisplay || !desktop.name || !desktop.id) continue
+        if (root.appsHidden[String(desktop.id)] || root.appsSessionHidden[String(desktop.id)]) continue
+        rows.push({ entry: desktop })
+      }
+    }
     var appRows = []
     for (var j = 0; j < rows.length; j++) {
       var entry = rows[j].entry
       var appId = String(entry.id || "")
       if (!appId) continue
-      var subtext = root.appLibrary.entrySubtext(entry)
+      var subtext = root.appLibrary ? root.appLibrary.entrySubtext(entry) : String(entry.genericName || entry.comment || "")
       var aliases = subtext ? [subtext] : []
       try {
         if (entry.keywords && typeof entry.keywords.join === "function") aliases = aliases.concat(entry.keywords)
@@ -885,7 +902,7 @@ Item {
         icon: "",
         appIcon: String(entry.icon || ""),
         appId: appId,
-        label: root.appLibrary.entryName(entry),
+        label: root.appLibrary ? root.appLibrary.entryName(entry) : String(entry.name),
         title: "",
         target: "",
         description: subtext,
@@ -1165,7 +1182,9 @@ Item {
 
         var detail = root.parentPathFor(entry.id)
         var row = root.displayRow(entry, detail, root.searchScore(entry, query))
-        if (entry.parent === active) currentRows.push(row)
+        // An installed app whose name matches goes in the top section, so
+        // typing "fire" offers Firefox itself before Setup > Defaults etc.
+        if (entry.parent === active || (entry.kind === "app" && String(entry.label).toLowerCase().indexOf(query.toLowerCase()) >= 0)) currentRows.push(row)
         else drilldownRows.push(row)
       }
 
@@ -1345,6 +1364,7 @@ Item {
       opened = false
       filterText = ""
       if (root.appLibrary) root.appLibrary.launch(appId, label)
+      else Quickshell.execDetached(["uwsm-app", "--", "gtk-launch", appId + ".desktop"])
     } else {
       root.applySelected(row.itemId, row.action)
     }
@@ -1522,6 +1542,13 @@ Item {
       if (root.providersLoaded["apps"]) root.mergeAppRows()
     }
   }
+  // The DesktopEntries fallback (no AppLibrary) refreshes on its own changes.
+  Connections {
+    target: root.appLibrary ? null : DesktopEntries.applications
+    function onValuesChanged() { if (root.providersLoaded["apps"]) root.mergeAppRows() }
+  }
+  onAppsHiddenChanged: if (!root.appLibrary && root.providersLoaded["apps"]) root.mergeAppRows()
+  onAppsSessionHiddenChanged: if (!root.appLibrary && root.providersLoaded["apps"]) root.mergeAppRows()
 
   // The JSONC sources are watched so live edits to the default file (or the
   // user extension at ~/.config/omarchy/extensions/omarchy-menu.jsonc) take
@@ -1695,7 +1722,7 @@ Item {
       if (midScreen || systemMenu) slideIn.begin()
       else card.slide = 0
       if (root.goLayout && root.eggPending) { root.eggPending = false; eggAnim.restart() }
-      else if (root.goLayout) { swingIn.restart(); goDash.bounceIn(); goFooter.deal(); slinkAnim.restart(); root.duelOn = Math.random() < 1 / 12 }
+      else if (root.goLayout) { swingIn.restart(); goDash.bounceIn(); goFooter.deal(); slinkAnim.restart(); root.duelOn = root.bloodMode || Math.random() < 1 / 12 }
       else card.swing = 1
     }
 
@@ -2324,11 +2351,10 @@ Item {
               radius: root.cornerRadius
               color: appCellArea.containsMouse ? root.selectedBackground : "transparent"
             }
-            // Icon, then its name in a pill so it stands out.
             Column {
               anchors.centerIn: parent
               width: parent.width - Style.space(8)
-              spacing: Style.space(7)
+              spacing: Style.space(6)
 
               Image {
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -2341,28 +2367,14 @@ Item {
                 asynchronous: true
                 smooth: true
               }
-
-              Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: Math.min(parent.width, appName.implicitWidth + Style.space(14))
-                height: appName.implicitHeight + Style.space(6)
-                radius: height / 2
-                color: appCellArea.containsMouse ? Util.alpha(appsPanel.accent, 0.22) : Util.alpha(root.foreground, 0.08)
-                border.width: 1
-                border.color: appCellArea.containsMouse ? Util.alpha(appsPanel.accent, 0.55) : Util.alpha(root.foreground, 0.12)
-
-                Text {
-                  id: appName
-                  anchors.centerIn: parent
-                  width: Math.min(implicitWidth, parent.parent.width - Style.space(14))
-                  horizontalAlignment: Text.AlignHCenter
-                  text: appCell.label
-                  color: appCellArea.containsMouse ? appsPanel.accent : root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.weight: Font.DemiBold
-                  elide: Text.ElideRight
-                }
+              Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: appCell.label
+                color: appCellArea.containsMouse ? root.selectedText : root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
               }
             }
             MouseArea {
@@ -2419,8 +2431,8 @@ Item {
         // The launcher's five categories, in capitals with thin dividers so they
         // read as a tab bar rather than labels for the columns above. The
         // dividers light up cyan in a quick left-to-right sweep and fade when
-        // the panel opens or the category changes. Active one clicked again
-        // shows all.
+        // the panel opens or the category changes. ALL comes first; an active
+        // category clicked again goes back to ALL.
         property real sweep: 2
         NumberAnimation {
           id: dividerSweep
@@ -2452,10 +2464,11 @@ Item {
               required property var modelData
               required property int index
               readonly property bool active: root.appsCategory === tab.modelData.id
-              // COMMUNICATE gets a wider tab (weight 1.25) so it isn't crowded.
-              readonly property real weight: tab.modelData.id === "communicate" ? 1.25 : 1
+              // COMMUNICATE gets a wider tab (weight 1.25) so it isn't crowded;
+              // ALL is short, so it takes less (0.7).
+              readonly property real weight: tab.modelData.id === "communicate" ? 1.25 : (tab.modelData.id === "" ? 0.7 : 1)
               width: (appsTabs.width - appsTabs.dividerWidth * (root.appsCategoryTabs.length - 1))
-                * tab.weight / (root.appsCategoryTabs.length + 0.25)
+                * tab.weight / (root.appsCategoryTabs.length - 0.05)
               height: appsTabs.height
               radius: root.cornerRadius
               color: tabArea.containsMouse ? root.selectedBackground : "transparent"
@@ -2487,7 +2500,7 @@ Item {
                 height: parent.height * 0.5
                 // 0..1 glow as the sweep passes this divider.
                 readonly property real glow: {
-                  var c = 0.35 + tab.index * 0.22, d = Math.abs(appsPanel.sweep - c)
+                  var c = 0.3 + tab.index * 0.2, d = Math.abs(appsPanel.sweep - c)
                   return d >= 0.45 ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * d / 0.45)
                 }
                 color: Qt.rgba(root.foreground.r + (appsPanel.accent.r - root.foreground.r) * glow,
@@ -2653,12 +2666,14 @@ Item {
         anchors.bottom: goFooter.top
         anchors.bottomMargin: Style.space(4)
         width: goFooter.width - (root.showGoDash ? root.goDashWidth + root.goDashGap : 0)
-        // Fits the gap between the last row and the footer (up to 64).
-        // The Go list starts under the header (see the left Column's layout).
-        readonly property real listBottom: card.contentTopInset + root.headerHeight + root.contentSpacing + resultList.contentHeight
-        readonly property real room: goFooter.y - Style.space(8) - listBottom
-        height: Math.max(0, Math.min(Style.space(64), room))
-        visible: shown && room >= Style.space(40)
+        // Drawn over the menu (user asked): the fighters stand on the
+        // footer line at their usual size (unit from a 64px strip), and the
+        // canvas reaches up over the list so raised arms, hops and a flying
+        // head are never clipped.
+        z: 50
+        readonly property real strip: Style.space(64)
+        height: strip + Style.space(90)
+        visible: shown
         opacity: visible ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 400 } }
 
@@ -2673,7 +2688,12 @@ Item {
             gap: 32, gapTarget: 32, nextGap: 0,
             A: { attack: 0, atkT: -1, next: duel.rnd(0.2, 0.9), lvl: 0, nextLvl: duel.rnd(0.2, 0.7), jump: 0, jumpT: -1 },
             B: { attack: 0, atkT: -1, next: duel.rnd(0.2, 0.9), lvl: 0, nextLvl: duel.rnd(0.2, 0.7), jump: 0, jumpT: -1 },
-            nextKill: duel.rnd(4, 9), killT: -1, loserA: Math.random() < 0.5, run: 0, nextHop: duel.rnd(2, 5)
+            nextKill: duel.rnd(4, 9), killT: -1, loserA: Math.random() < 0.5, run: 0, nextHop: duel.rnd(2, 5),
+            // Blood mode: no knockdowns; after 3 s the finale (finT counts up).
+            blood: root.bloodMode, time: 0, finT: -1, finAt: 3,
+            // The loser's head once it's off, in units: offset from the
+            // loser's x, height of its centre above the ground, spin.
+            head: null, wUnits: 200
           }
         }
         onVisibleChanged: if (visible) { duel.t = 0; duel.st = duel.freshState() }
@@ -2701,6 +2721,12 @@ Item {
           var st = duel.st
           if (!st) return
           dt = Math.min(dt, 0.05)
+          st.time += dt
+          if (st.blood) {
+            st.nextKill = 99
+            if (st.finT < 0 && st.time >= st.finAt) { st.finT = 0; st.cxTarget = st.cx; st.A.atkT = -1; st.B.atkT = -1; st.A.attack = 0; st.B.attack = 0 }
+            if (st.finT >= 0) { duel.stepFinale(st, dt); return }
+          }
           var fighting = st.killT < 0
           // Dash toward a random spot, at a random speed.
           st.nextMove -= dt
@@ -2731,6 +2757,45 @@ Item {
             if (st.nextKill <= 0) { st.killT = 0; st.loserA = Math.random() < 0.5 }
           }
         }
+        // The finale: the winner's high cut, the loser's head pops off and
+        // bounces, then rolls away from the winner until it stops (or meets
+        // the edge); the body falls back and stays down; the winner hops
+        // with both arms up.
+        function stepFinale(st, dt) {
+          st.finT += dt
+          st.run = 0
+          var away = st.loserA ? -1 : 1      // the loser stands on the winner's left if loserA
+          if (!st.head && st.finT >= 0.25)
+            st.head = { x: 0, y: 44.5, vx: away * duel.rnd(26, 38), vy: duel.rnd(22, 32), spin: 0, rolling: false }
+          var h = st.head
+          if (h) {
+            var r = 5.5
+            if (!h.rolling) {
+              h.vy -= 150 * dt
+              h.x += h.vx * dt
+              h.y += h.vy * dt
+              h.spin += h.vx / r * dt
+              if (h.y <= r) {
+                h.y = r
+                h.vy = -h.vy * 0.38
+                h.vx *= 0.8
+                if (Math.abs(h.vy) < 8) { h.vy = 0; h.rolling = true }
+              }
+            } else {
+              h.vx *= Math.pow(0.35, dt)       // friction
+              h.x += h.vx * dt
+              h.spin += h.vx / r * dt
+              if (Math.abs(h.vx) < 0.8) h.vx = 0
+            }
+            // Stop at the canvas edge (the loser's x isn't known here, so
+            // onPaint clamps the drawn position too).
+          }
+          // Winner keeps hopping in celebration.
+          var w = st.loserA ? st.B : st.A
+          if (st.finT > 0.7 && w.jumpT < 0) w.jumpT = 0
+          duel.stepFencer(w, dt, false)
+        }
+
         FrameAnimation {
           running: duel.visible
           onTriggered: { duel.t += frameTime; duel.step(frameTime); duel.requestPaint() }
@@ -2751,7 +2816,9 @@ Item {
         // right. attack 0..1 (thrust), lvl -1..1 (sword height), run = how
         // fast it's travelling (legs scissor), fall 0..1 (stabbed, falls back).
         // Returns the sword tip.
-        function fighter(ctx, x, ground, dir, attack, lvl, bob, run, fall, blade, unit) {
+        // extra (optional): { headless, cheer } for the blood-mode finale.
+        function fighter(ctx, x, ground, dir, attack, lvl, bob, run, fall, blade, unit, extra) {
+          var headless = !!(extra && extra.headless), cheer = extra ? (extra.cheer || 0) : 0
           var leg = 18 * unit, body = 20 * unit, head = 5.5 * unit
           ctx.save()
           ctx.translate(x, ground)
@@ -2768,9 +2835,27 @@ Item {
           var lean = dir * (5 * unit * attack + 2 * unit * Math.min(1, run))
           ctx.moveTo(0, hipY); ctx.lineTo(lean, shY)
           ctx.stroke()
-          ctx.beginPath()
-          ctx.arc(lean * 1.2, shY - head - 1 * unit, head, 0, 2 * Math.PI)
-          ctx.stroke()
+          if (!headless) {
+            ctx.beginPath()
+            ctx.arc(lean * 1.2, shY - head - 1 * unit, head, 0, 2 * Math.PI)
+            ctx.stroke()
+          }
+          if (cheer > 0) {
+            // Both arms up in a wide V (clear of the head), the sword raised
+            // in the leading hand, tilted out.
+            var up = 8 * unit * cheer, out = 11 * unit
+            ctx.beginPath()
+            ctx.moveTo(lean, shY + 3 * unit); ctx.lineTo(lean - dir * out, shY - up)
+            ctx.moveTo(lean, shY + 3 * unit); ctx.lineTo(lean + dir * out, shY - up)
+            ctx.stroke()
+            var cx2 = lean + dir * out, cy2 = shY - up
+            ctx.strokeStyle = blade
+            ctx.lineWidth = 2.2 * unit
+            ctx.beginPath(); ctx.moveTo(cx2, cy2); ctx.lineTo(cx2 + dir * 5 * unit, cy2 - 13 * unit); ctx.stroke()
+            ctx.restore()
+            return { x: x + cx2, y: ground + cy2 - 13 * unit }
+          }
+          var noBlade = !!(extra && extra.dropped)
           // Back arm.
           ctx.beginPath()
           ctx.moveTo(lean, shY + 3 * unit)
@@ -2786,15 +2871,17 @@ Item {
           var ang = (lvl * 22 * (1 - attack) + 4) * Math.PI / 180
           var len = 24 * unit
           var tx = hx + dir * Math.cos(ang) * len, ty = hy - Math.sin(ang) * len
-          ctx.strokeStyle = blade
-          ctx.lineWidth = 2.2 * unit
-          ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(tx, ty); ctx.stroke()
-          ctx.strokeStyle = duel.ink
-          ctx.lineWidth = 1.6 * unit
-          ctx.beginPath()
-          ctx.moveTo(hx - 3 * unit * Math.sin(ang) * dir, hy - 3 * unit * Math.cos(ang))
-          ctx.lineTo(hx + 3 * unit * Math.sin(ang) * dir, hy + 3 * unit * Math.cos(ang))
-          ctx.stroke()
+          if (!noBlade) {
+            ctx.strokeStyle = blade
+            ctx.lineWidth = 2.2 * unit
+            ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(tx, ty); ctx.stroke()
+            ctx.strokeStyle = duel.ink
+            ctx.lineWidth = 1.6 * unit
+            ctx.beginPath()
+            ctx.moveTo(hx - 3 * unit * Math.sin(ang) * dir, hy - 3 * unit * Math.cos(ang))
+            ctx.lineTo(hx + 3 * unit * Math.sin(ang) * dir, hy + 3 * unit * Math.cos(ang))
+            ctx.stroke()
+          }
           // Tip in canvas coordinates (undo the fall rotation).
           var a = -dir * fall * Math.PI / 2
           var gx = x + tx * Math.cos(a) - ty * Math.sin(a), gy = ground + tx * Math.sin(a) + ty * Math.cos(a)
@@ -2822,7 +2909,7 @@ Item {
           ctx.reset()
           var st = duel.st
           if (!st) return
-          var unit = Math.max(1, height / 64)
+          var unit = Math.max(1, duel.strip / 64)
           var ground = height - 4 * unit
           var t = duel.t
           var travel = Math.max(0, width / 2 - 62 * unit)
@@ -2843,6 +2930,51 @@ Item {
           ctx.strokeStyle = Qt.rgba(duel.ink.r, duel.ink.g, duel.ink.b, 0.18)
           ctx.lineWidth = 1 * unit
           ctx.beginPath(); ctx.moveTo(8 * unit, ground + 1 * unit); ctx.lineTo(width - 8 * unit, ground + 1 * unit); ctx.stroke()
+
+          // Blood-mode finale: the cut, then beheading, slump and celebration.
+          if (st.blood && st.finT >= 0) {
+            var f = st.finT
+            var winA = !st.loserA
+            var cut = f < 0.35 ? 0.9 : 0
+            var slump = Math.min(1, Math.max(0, (f - 0.45) / 0.35))
+            var cheer = Math.min(1, Math.max(0, (f - 0.7) / 0.25))
+            var xA = cx - gap, xB = cx + gap
+            // Celebration hops.
+            bobA = -st.A.jump * 9 * unit
+            bobB = -st.B.jump * 9 * unit
+            var dropped = slump > 0.6
+            var tA2 = fighter(ctx, xA, ground, 1, winA ? cut : 0, 1, bobA, 0, winA ? 0 : slump, duel.blueBlade, unit,
+              winA ? { cheer: cheer } : { headless: f >= 0.25, dropped: dropped })
+            var tB2 = fighter(ctx, xB, ground, -1, winA ? 0 : cut, 1, bobB, 0, winA ? slump : 0, duel.coralBlade, unit,
+              winA ? { headless: f >= 0.25, dropped: dropped } : { cheer: cheer })
+            // The loser's sword, dropped flat on the ground beside them.
+            if (dropped) {
+              var lx0 = winA ? xB : xA, ldir = winA ? -1 : 1
+              ctx.strokeStyle = winA ? duel.coralBlade : duel.blueBlade
+              ctx.lineWidth = 2.2 * unit
+              ctx.beginPath()
+              ctx.moveTo(lx0 + ldir * 6 * unit, ground - 1.2 * unit); ctx.lineTo(lx0 + ldir * 30 * unit, ground - 1.2 * unit)
+              ctx.stroke()
+              ctx.strokeStyle = duel.ink
+              ctx.lineWidth = 1.6 * unit
+              ctx.beginPath(); ctx.moveTo(lx0 + ldir * 8 * unit, ground - 4 * unit); ctx.lineTo(lx0 + ldir * 8 * unit, ground + 1.5 * unit); ctx.stroke()
+            }
+            if (st.head) {
+              var lx = winA ? xB : xA
+              var hx = Math.max(6 * unit, Math.min(width - 6 * unit, lx + st.head.x * unit))
+              var hy = ground - st.head.y * unit
+              var r = 5.5 * unit
+              ctx.strokeStyle = duel.ink
+              ctx.lineWidth = 2 * unit
+              ctx.beginPath(); ctx.arc(hx, hy, r, 0, 2 * Math.PI); ctx.stroke()
+              // A dot for an eye, so the roll shows.
+              ctx.fillStyle = duel.ink
+              ctx.beginPath()
+              ctx.arc(hx + Math.cos(st.head.spin) * r * 0.45, hy + Math.sin(st.head.spin) * r * 0.45, 1.2 * unit, 0, 2 * Math.PI)
+              ctx.fill()
+            }
+            return
+          }
 
           var tipA = fighter(ctx, cx - gap, ground, 1, aA, lA, bobA, run, st.killT >= 0 && st.loserA ? fall : 0, duel.blueBlade, unit)
           var tipB = fighter(ctx, cx + gap, ground, -1, aB, lB, bobB, run, st.killT >= 0 && !st.loserA ? fall : 0, duel.coralBlade, unit)
@@ -3236,7 +3368,7 @@ Item {
                 // PNG icons upscaled and blurry on HiDPI displays.
                 sourceSize.width: width * Screen.devicePixelRatio
                 sourceSize.height: height * Screen.devicePixelRatio
-                source: row.isApp && root.appLibrary ? root.appLibrary.iconSource(row.appIcon) : ""
+                source: !row.isApp ? "" : root.appLibrary ? root.appLibrary.iconSource(row.appIcon) : root.appIconSource(row.appIcon)
                 asynchronous: true
                 anchors.left: parent.left
                 anchors.leftMargin: root.rowReservedBorderLeft + Style.space(8) + (Style.space(36) - width) / 2

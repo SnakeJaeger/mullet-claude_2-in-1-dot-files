@@ -93,12 +93,12 @@ Item {
 
   // How many notifications the history directory keeps, and therefore how
   // many `showHistory` can replay.
-  readonly property int historyLimit: 10
+  readonly property int historyLimit: 50
 
-  // daa: every toast stays up for 30 s (hover still pauses it) unless it's
+  // daa: every toast stays up for 10 s (hover still pauses it) unless it's
   // dismissed with its close button or a right click. Critical ones still
   // stay until dismissed.
-  readonly property int popupDuration: 30000
+  readonly property int popupDuration: 10000
 
   function durationFor(urgency, expireTimeout) {
     return urgency === NotificationUrgency.Critical ? 0 : popupDuration

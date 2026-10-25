@@ -88,6 +88,13 @@ blur behind them.
   right-click opens a terminal), workspace dots, and an **app-name island**.
   Hover the app-name island for a list of every window per workspace,
   scratchpads included, and click one to jump to it.
+- **Omarchy logo island** (`daa.desktop-shortcuts`), between the workspaces
+  and the app name: hover and the box-shaped island grows, a stem drops out
+  of it and a card of shortcuts blooms from the stem (apps on top; terminal,
+  Tailscale, remote desktop and Mullvad bottom left; Home / Documents /
+  Downloads bottom right). Light trails run round the whole island + stem +
+  card outline. Shortcuts with a dropdown open it (folders open in the Files
+  dropdown); the card closes 0.3 s after the pointer leaves it.
 - **Middle:** a **now-playing island** that only appears while media is
   playing. It lingers 5 s after playback stops.
 - **Centre:** the clock island and the weather. Toggles that are on show as
@@ -105,6 +112,8 @@ blur behind them.
   | Display (`daa.monitor`) | Opens `wdisplays` (floating) |
   | Weather (`daa.weather`) | Toggles the GNOME Weather dropdown |
   | Battery, Wi-Fi, Bluetooth | Opens / closes the popup, as before |
+  | Updates (`daa.updates`, left end) | Toggles the update dropdown (see below) |
+  | Bell (`daa.notify-bell`, right end) | Slides in every notification (also on hover) |
 
   A click that closes a popup keeps it shut until the cursor leaves the icon
   and comes back, so it doesn't instantly hover open again.
@@ -116,7 +125,17 @@ blur behind them.
     adaptive) in the header, a note that the power profile sets it, and a
     **Boost** button under the brightness slider (see below).
   - **Battery** (`daa.power`): four power profiles instead of three.
-- System stats (CPU, RAM, disk, temperature, uptime) moved into the Go menu.
+- **Update count** (`daa.updates`): pending repo + AUR updates
+  (`checkupdates`, `yay -Qua`) beside the icon; hidden at 0, white up to 20,
+  cyan up to 30, then a slow coral blink. Rechecked every 30 minutes and as
+  soon as an update run finishes.
+- **Notification bell** (`daa.notify-bell`): the count of toasts on screen
+  plus history beside it, still up to 5, pulsing cyan past 5 and coral past
+  10. Its panel slides in from the right with every notification: click one
+  to run its action (or focus its app), × to drop it, **Clear all**. Toasts
+  stay up 10 s and history keeps 50.
+- System stats (CPU, RAM, disk, temperature, uptime, internet latency) moved
+  into the Go menu.
 - **Tray** (`daa.tray`): the hidden-icons drawer takes no room while
   collapsed. Omarchy's tray kept a gap for every hidden icon, so the bar grew
   with each tray app.
@@ -175,15 +194,26 @@ version only) with the server and phone cards greyed out. Whoever clicks the
 Tailscale toggle becomes its operator (`tailscale-claim`). Autologin is off,
 and the login screen's ‹ › switcher picks the account.
 
-### Info bar (tap `SUPER`)
-A tap of `SUPER` on its own fades in a card at the bottom middle of the
-screen (`daa.infobar`): the workspaces in use with icons of the apps on them
-(the current one outlined), the time and date, the weather and where it's
-for, battery, Wi-Fi and Bluetooth, and a quote at the bottom that changes
-every 6 hours. Another tap hides it at once; otherwise it fades after 4 s.
-It fires on release, so `SUPER` shortcuts don't trigger it. Clicks pass
-through it. Mostly meant for when the bar is hidden.
+### Quick search and info bar (tap `SUPER`)
+A tap of `SUPER` on its own (a release bind, so `SUPER` shortcuts don't
+trigger it) dims the screen and drops a small search box near the top
+(`daa.search`), with the **info bar** (`daa.infobar`) at the bottom middle.
+Both have a slowly breathing cyan-to-coral border.
 
+- **Search:** matching apps, then *Search files* (Catfish dropdown) and
+  *Search the web*. `/` switches to commands (`/lock`, `/reboot`, `/update`,
+  `/claude`, `/screenshot`, `/dnd`, `/clear`, …); anything else after `/`
+  can run in a terminal. Up / Down move, Enter runs, Escape closes.
+- **Tab / Shift + Tab** step through the workspaces while it's up; the box
+  stays open. Opening an app or a dropdown closes it.
+- **Info bar:** the workspaces in use with their app icons (click one to go
+  there), time and date, weather and where it's for, and Wi-Fi, battery and
+  Bluetooth (longest first). Click a status line and the cursor glides up to
+  that bar icon and opens its popup (`~/.local/bin/cursor-to-tray`). A quote
+  at the bottom changes every 6 hours.
+- **Easter eggs:** the Konami code sets off a comet storm; `abacabb` turns
+  the UI's cyans and whites to coral for a minute (and the Go menu duel ends
+  rather more decisively).
 - Quotes: `daa.infobar/quotes.txt`, one per line, edited live.
 - Data: `~/.local/bin/infobar-status` prints one JSON snapshot per show.
   Weather comes from wttr.in for the location saved with
@@ -244,6 +274,7 @@ instant. Scripts and menus can summon one too:
 | `SUPER + D` | Catfish file search over the whole drive (`/`, not just home) |
 | `SUPER + ALT + W` | GNOME Weather; also a left click on the bar's weather |
 | `SUPER + M` | Mullvad in a terminal (`~/.local/bin/mullvad-tui`): status, account days left, connect, quick-connect to custom lists and recent locations, a searchable location picker |
+| (bar update count) | `omarchy-update`, pinned to the top-right corner and sliding in from the right; not preloaded, since it would start updating at login |
 | `SUPER + SHIFT + M` | The Mullvad app, rising from the bottom (`rise = 1 / 3`). It only runs while it's shown: hiding it quits it (`quit_on_hide`), since it crash-reported when logout killed it |
 
 Each entry can set its size (`px` or screen fractions), pin itself to the
@@ -269,7 +300,10 @@ searching.
   with the launcher's categories; **Keybinds** shows every binding, searchable,
   and a click runs it (right-click opens `bindings.lua` in Sublime). Tab walks
   the footer. Try `SUPER + CTRL + ALT + SPACE` for the version without brakes,
-  and look out for the duel under Update (1 in 12, or type `omarchy!`).
+  and look out for the duel under Update (1 in 12, or type `omarchy!`). The
+  **Lab** card's heartbeat is a `tailscale ping` to the lab box (latency and
+  whether the route is direct or via a DERP relay); the **System** card adds
+  internet latency.
 - **Keybindings** (`SUPER + K`): opens the Go menu on its Keybinds panel;
   `SUPER + SHIFT + K` is the big standalone list.
 - **App launcher** (`SUPER + R`): a square 5 × 6 grid framed by the Omarchy
@@ -298,7 +332,9 @@ searching.
 
 ### Scratchpad behaviour (`~/.config/hypr/scratchpads.lua`)
 - Clicking anywhere outside a scratchpad or dropdown hides it. So does
-  focusing another window, or `SUPER + X`.
+  focusing another window, or `SUPER + X`. Clicks while a screenshot region
+  is being picked, or in the quick search / info bar, don't count.
+- Whenever a scratchpad or dropdown shows, the cursor moves to its centre.
 - New windows opened while a scratchpad is showing land on the normal
   workspace underneath, not inside the scratchpad.
 - Guards stop double-clicks and closing bar panels from bringing a hidden
@@ -313,6 +349,12 @@ searching.
 ### Workspaces (`~/.config/hypr/workspace_collapse.lua`)
 Workspaces stay packed from 1. When one empties, the ones after it shift
 down, and focus follows.
+
+**Magellanic desktop selection** (`SUPER + ALT + number`): go to a workspace
+the long way round. The bar's workspace indicator heads *away* from it, laps
+the whole top bar, wraps at the screen edge and lands on it from the other
+side. If the focused window is in a window group, the same keys pick that
+group's tab instead (Omarchy's own use of them).
 
 ---
 

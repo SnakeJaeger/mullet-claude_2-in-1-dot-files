@@ -1,43 +1,45 @@
 #!/bin/bash
 # Go menu lab card (daa.menu LabCard.qml): one JSON line of network status.
-# Pings the lab box (address from the Remmina profile); when it's down, pings
-# 1.1.1.1 instead so the sparkline still shows the internet connection.
-# `lab-status ping` prints only the pings: the card samples those in the
+# The heartbeat is a `tailscale ping` to the lab box (address from the Remmina
+# profile): latency over the tailnet plus the route it took (direct, or which
+# DERP relay). General internet latency lives on the system card instead.
+# `lab-status ping` prints only the heartbeat: the card samples that in the
 # background so the sparkline already holds a minute when the menu opens.
 # Set LAB_PROFILE to your own Remmina profile for the lab box.
 PROFILE="${LAB_PROFILE:-$HOME/.local/share/remmina/lab.remmina}"
 host=$(sed -n 's/^server=//p' "$PROFILE" | head -1)
 host=${host%%:*}
 
-ping_ms() { ping -c1 -W1 "$1" 2>/dev/null | sed -n 's/.*time=\([0-9.]*\).*/\1/p' | head -1; }
+# Prints "<ms> <route>", route = "direct" or the DERP region; nothing on failure.
+ts_ping() {
+  tailscale ping --c 1 --timeout 1s "$1" 2>/dev/null | sed -n \
+    -e 's/.* via DERP(\([^)]*\)) in \([0-9.]*\)ms.*/\2 \1/p' \
+    -e 's/.* via [^ ]* in \([0-9.]*\)ms.*/\1 direct/p' | head -1
+}
+
+heartbeat_json() {
+  local ms=${1%% *} route=${1#* }
+  jq -cn --arg ms "$ms" --arg route "$route" '{
+    lab: (if $ms == "" then null else ($ms | tonumber) end),
+    route: (if $ms == "" then null else $route end)
+  }'
+}
 
 if [[ $1 == ping ]]; then
-  lab=$(ping_ms "$host")
-  inet=""
-  [[ -z $lab ]] && inet=$(ping_ms 1.1.1.1)
-  jq -cn --arg lab "$lab" --arg inet "$inet" '{
-    lab: (if $lab == "" then null else ($lab | tonumber) end),
-    inet: (if $inet == "" then null else ($inet | tonumber) end)
-  }'
+  heartbeat_json "$([[ -n $host ]] && ts_ping "$host")"
   exit
 fi
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-{ [[ -n $host ]] && ping_ms "$host" >"$tmp/lab"; } &
+{ [[ -n $host ]] && ts_ping "$host" >"$tmp/lab"; } &
 { [[ -n $host ]] && curl -s -m 1.5 "http://$host:3080/v3/version" | jq -r '.version // empty' >"$tmp/gns3" 2>/dev/null; } &
 { tailscale status --json 2>/dev/null | jq -r '.BackendState // empty' >"$tmp/ts"; } &
 { mullvad status 2>/dev/null | head -1 >"$tmp/mv"; } &
 wait
 
-lab=$(<"$tmp/lab")
-inet=""
-[[ -z $lab ]] && inet=$(ping_ms 1.1.1.1)
-
-jq -cn --arg lab "$lab" --arg inet "$inet" --arg gns3 "$(<"$tmp/gns3")" \
-  --arg ts "$(<"$tmp/ts")" --arg mv "$(<"$tmp/mv")" '{
-  lab: (if $lab == "" then null else ($lab | tonumber) end),
-  inet: (if $inet == "" then null else ($inet | tonumber) end),
+heartbeat_json "$(<"$tmp/lab")" | jq -c --arg gns3 "$(<"$tmp/gns3")" \
+  --arg ts "$(<"$tmp/ts")" --arg mv "$(<"$tmp/mv")" '. + {
   gns3: (if $gns3 == "" then null else $gns3 end),
   tailscale: ($ts == "Running"),
   mullvad: ($mv | startswith("Connected"))

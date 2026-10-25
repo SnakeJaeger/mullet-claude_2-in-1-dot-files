@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "daa.desktop-shortcuts",
+  "name": "Shortcuts button",
+  "version": "1.0.0",
+  "author": "daa",
+  "description": "Omarchy logo; hover drops a card of network/app shortcuts and folders",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Shortcuts button",
+    "description": "Omarchy logo; hover drops a card of network/app shortcuts and folders",
+    "category": "Compositor",
+    "allowMultiple": false
+  }
+}

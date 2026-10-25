@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "daa.search",
+  "name": "Quick search",
+  "version": "1.0.0",
+  "author": "daa",
+  "description": "Small search box (tap SUPER): apps, then files and the web",
+  "kinds": [
+    "menu"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "Search.qml"
+  }
+}

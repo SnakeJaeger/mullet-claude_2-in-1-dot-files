@@ -102,7 +102,7 @@ end
 -- regular window as the overlay opens, so there's nothing hidden to go back to.
 local FOCUS_OVERLAYS = {
   ["omarchy-menu"] = true, ["omarchy-launcher"] = true, ["omarchy-clipboard"] = true,
-  ["omarchy-image-selector"] = true, ["omarchy-emojis"] = true,
+  ["omarchy-image-selector"] = true, ["omarchy-emojis"] = true, ["omarchy-search"] = true,
 }
 -- On an empty workspace there's nothing to park on, so as a backstop: for
 -- half a second after one of these overlays closes, a dropdown that appears
@@ -221,9 +221,34 @@ function set_notification_hover(on)
   notification_hovered = on and true or false
 end
 
+-- Screen pickers (slurp's region select, hyprpicker's freeze) and the quick
+-- search (daa.search, with the info bar under it): clicks there belong to
+-- them, they aren't clicks away from the dropdown. Hiding it would also
+-- refocus the window underneath, which warps the cursor before the click
+-- lands (a drag, or a click on the info bar, went astray).
+-- Counted while open, plus a moment after so the release doesn't count.
+local PICKERS = { selection = true, hyprpicker = true, ["omarchy-search"] = true }
+local pickers_open, picker_grace, picker_gen = 0, false, 0
+hl.on("layer.opened", function(layer)
+  if layer and PICKERS[layer.namespace] then
+    pickers_open = pickers_open + 1
+    dbg("picker open", layer.namespace, pickers_open)
+  end
+end)
+hl.on("layer.closed", function(layer)
+  if not (layer and PICKERS[layer.namespace]) then return end
+  pickers_open = math.max(0, pickers_open - 1)
+  dbg("picker close", layer.namespace, pickers_open)
+  picker_grace = true
+  picker_gen = picker_gen + 1
+  local gen = picker_gen
+  hl.timer(function() if gen == picker_gen then picker_grace = false end end, { timeout = 400, type = "oneshot" })
+end)
+
 hl.bind("mouse:272", function()
   -- Clicks in (or dismissing) a bar panel leave the dimmed scratchpad be.
   if panel_open or notification_hovered then return end
+  if pickers_open > 0 or picker_grace then return end
   local pos = hl.get_cursor_pos()
   local monitor = pos and hl.get_monitor_at(pos)
   local special = monitor and monitor.active_special_workspace

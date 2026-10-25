@@ -13,6 +13,7 @@
 -- rise = fraction of the screen height, measured up from the bottom, where the
 -- window's centre rests; the window rises from below the screen to get there.
 -- preload = true launches the app hidden at login so the first press is instant.
+-- key may be left out for a dropdown that's only summoned by name.
 local dropdowns = {
   -- Geometry copied from where it was hand-placed (119x35 cells at font 10)
   { key = "SUPER + T", name = "terminal", title = "Dropdown terminal", cmd = [[alacritty --class dropdown.terminal -o font.size=10 -o 'env.DROPDOWN_TERMINAL="1"']], px = { 990, 667 }, y = -22, preload = true },
@@ -40,11 +41,20 @@ local dropdowns = {
   { key = "SUPER + SHIFT + M", name = "mullvad", title = "Dropdown Mullvad VPN app", cmd = "mullvad-vpn", match = "mullvad-vpn", px = { 320, 568 }, rise = 1 / 3,
     -- Closing its window only sends it to the tray, so quit the app itself.
     quit_on_hide = [[pkill -TERM -f 'electron --ozone-platform=x11 /usr/lib/mullvad-vpn/app\.asar$']] },
+  -- System update, from the bar's update count (daa.updates): hangs in the
+  -- upper right corner and slides in from the right. Not preloaded (it would
+  -- start updating at login); recounts the bar as soon as the update ends.
+  { name = "update", title = "Dropdown system update",
+    cmd = [[alacritty --class dropdown.update --title Omarchy -e bash -c 'omarchy-show-logo; omarchy-update; s=$?; omarchy-shell -q daa.updates refresh; (( s != 130 )) && omarchy-show-done']],
+    px = { 760, 520 }, right = 10, slide = "slide" },
 }
 
 -- Bitwarden reloads its window and asks for focus every time the vault locks;
 -- with Omarchy's focus_on_activate that pulled the hidden dropdown into view.
 o.window("^Bitwarden$", { focus_on_activate = false })
+
+-- The update dropdown has no window border (user asked).
+o.window("^dropdown\\.update$", { border_size = 0 })
 
 local function dims(dropdown)
   local w, h = dropdown.w or 0.7, dropdown.h or 0.6
@@ -299,7 +309,7 @@ for _, dropdown in ipairs(dropdowns) do
         hl.dispatch(hl.dsp.exec_cmd("uwsm-app -- " .. dropdown.cmd))
       end
     end
-    o.bind(dropdown.key, dropdown.title, toggles[dropdown.name])
+    if dropdown.key then o.bind(dropdown.key, dropdown.title, toggles[dropdown.name]) end
     -- Claim the first window of the class at login, but leave it hidden.
     if dropdown.preload then
       hl.on("hyprland.start", function()
@@ -338,7 +348,7 @@ for _, dropdown in ipairs(dropdowns) do
     end
     toggle_special(dropdown)
   end
-  o.bind(dropdown.key, dropdown.title, toggles[dropdown.name])
+  if dropdown.key then o.bind(dropdown.key, dropdown.title, toggles[dropdown.name]) end
 
   if dropdown.preload then o.launch_on_start(dropdown.cmd) end
 
@@ -372,3 +382,28 @@ hl.on("workspace.special_active", function(ws)
   end
 end)
 
+
+-- Whenever a scratchpad (any special workspace) comes up, put the cursor in
+-- the middle of its window, clamped to the screen for ones that hang off the
+-- top. A beat later, so rise dropdowns have their target position set.
+hl.on("workspace.special_active", function(ws)
+  local name = ws and ws.name or nil
+  if not name then return end
+  hl.timer(function()
+    local monitor = hl.get_active_monitor()
+    local shown = monitor and monitor.active_special_workspace
+    if not (shown and shown.name == name) then return end
+    local target
+    for _, window in ipairs(hl.get_windows()) do
+      if window.mapped and not window.hidden and window.workspace and window.workspace.name == name then
+        if not target or window.focus_history_id < target.focus_history_id then target = window end
+      end
+    end
+    if not target then return end
+    local mx, my = monitor.x, monitor.y
+    local mw, mh = monitor.width / monitor.scale, monitor.height / monitor.scale
+    local x = math.max(mx, math.min(mx + mw - 1, target.at.x + target.size.x / 2))
+    local y = math.max(my, math.min(my + mh - 1, target.at.y + target.size.y / 2))
+    hl.dispatch(hl.dsp.cursor.move({ x = math.floor(x), y = math.floor(y) }))
+  end, { timeout = 60, type = "oneshot" })
+end)

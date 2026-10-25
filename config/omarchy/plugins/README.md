@@ -11,7 +11,10 @@ which swaps the desktop bar for the tablet bar and back.
 |---|---|
 | `daa.desktop-bar` | Desktop bar (islands; status icons, clock and weather open their panels on hover; app island window list) |
 | `daa.desktop-arch-menu` | Arch logo button → Go menu |
-| `daa.desktop-workspaces` | Workspace dots |
+| `daa.desktop-workspaces` | Workspace dots; SUPER+ALT+digit goes to a workspace with the indicator lapping the whole bar ("magellanic desktop selection", IPC `daa.workspaces lap` from hypr/bindings.lua) |
+| `daa.desktop-shortcuts` | Omarchy logo on its own island (Bar.qml logoEntries) after the left island; grows on hover; hover drops a stem-and-bloom card with a theme-gradient border trace and split-flap tiles of white shortcuts (Go menu Network column + Jellyfin/Firefox/Immich; Home/Documents/Downloads open the Files dropdown there) |
+| `daa.updates` | Left end of the right island: pending updates (checkupdates + yay -Qua) with count; hidden at 0, white ≤20, cyan ≤30, slow coral blink above; click toggles the "update" dropdown (hypr/dropdowns.lua, upper right, slides from the right; recounts when the update ends) |
+| `daa.notify-bell` | Right end of the right island: bell + notification count (live toasts + history files), slow coral pulse while any; hover/click slides a panel in from the right — click a notification to run its action/focus its app, × removes, Clear all |
 | `daa.desktop-app-name` | Focused-app island next to the workspaces |
 | `daa.desktop-media` | Now-playing island (only while playing) |
 | `daa.desktop-indicators` | Clock island indicators (active ones beside the clock); shares its toggles with the sound / display / calendar panels via PanelToggles.qml; the tablet bar keeps the clock drop-down |
@@ -32,9 +35,10 @@ which swaps the desktop bar for the tablet bar and back.
 ### Shared — plain `daa.*` (behave differently in tablet mode)
 | Plugin | What it is |
 |---|---|
-| `daa.menu` | All menus (Go menu — Go menu: system (StatsCard.qml) / lab / server (ServerCard.qml: Jellyfin, Immich, calendar from ~/.config/lab-services/services via ~/.local/bin/server-status) / phone (PhoneCard.qml, KDE Connect via ~/.local/bin/phone-status) cards on the right that slide into the right wall and bounce; Apps / Terminal / Keys / Tablet / System footer dealt out like a card spread; the menu swings down from the Arch button —, tablet menu, quick toggles…); Go menu's Apps / Tablet / System bottom row stays in every Go submenu (hidden while searching); typing in the root menu adds a "Search all files" row (→ ~/.local/bin/file-search → Catfish dropdown); system (shutdown) menu is borderless, bottom-left, slides in from the left; menu keys go through ~/.local/bin/menu-toggle (re-press closes, other key switches); SUPER+K keybindings list is borderless, 600x720, top-left (10px in, 50px down), slides in from the left |
+| `daa.menu` | All menus (Go menu — Go menu: system (StatsCard.qml) / lab / server (ServerCard.qml: Jellyfin, Immich, calendar from ~/.config/lab-services/services via ~/.local/bin/server-status, plus Remmina counted up when the VNC port answers) / phone (PhoneCard.qml, KDE Connect via ~/.local/bin/phone-status) cards on the right that slide into the right wall and bounce; Apps / Terminal / Keys / Tablet / System footer dealt out like a card spread; the menu swings down from the Arch button —, tablet menu, quick toggles…); Go menu's Apps / Tablet / System bottom row stays in every Go submenu (hidden while searching); typing in the root menu adds a "Search all files" row (→ ~/.local/bin/file-search → Catfish dropdown); system (shutdown) menu is borderless, bottom-left, slides in from the left; menu keys go through ~/.local/bin/menu-toggle (re-press closes, other key switches); SUPER+K keybindings list is borderless, 600x720, top-left (10px in, 50px down), slides in from the left |
 | `daa.clipboard` | Clipboard manager (SUPER+V, SUPER+CTRL+V), borderless, bottom-right, slides in from the right; header Clear button (= Shift+Delete, asks first) |
 | `daa.launcher` | App launcher: search + Web/Utility/Create/Communicate/Entertain tabs (scroll rail in tablet mode) |
+| `daa.search` | Quick search box (tap SUPER alone; release bind in hypr/bindings.lua): apps, then Search files (Catfish dropdown) / Search the web |
 | `daa.osd` | On-screen display |
 | `daa.background` | Wallpaper (tap = dismiss in tablet mode) |
 | `daa.tray` | System tray, clone of omarchy.tray: the collapsed drawer takes no width; click the arrow to keep the drawer open (tablet bar: tap-only, wallpaper tap folds it); both BarModel.js files treat it as the tray |
@@ -49,6 +53,7 @@ which swaps the desktop bar for the tablet bar and back.
 
 | File | Mode | What |
 |---|---|---|
+| `~/.local/bin/cursor-to-tray` | desktop | Glides the cursor to a bar icon (omarchy.bar `iconPos` IPC) and opens its panel; the info bar's Wi-Fi / Bluetooth / battery rows use it |
 | `~/.local/bin/phone-status` | desktop | KDE Connect status JSON / actions (ring, clipboard, browse, settings) for the Go menu phone card; Nautilus right-click Scripts → Send to phone |
 | `~/.local/bin/tablet-mode` | tablet | The switcher: devices, bar swap, gestures, keyboard, rotation, per-mode wallpaper, `dismiss` |
 | `~/.config/tablet-mode/gestures` | tablet | Edge-swipe gestures (lisgd) |

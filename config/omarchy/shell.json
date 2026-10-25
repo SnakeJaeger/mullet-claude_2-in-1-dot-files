@@ -34,6 +34,9 @@
       ],
       "right": [
         {
+          "id": "daa.updates"
+        },
+        {
           "id": "daa.tray"
         },
         {
@@ -53,6 +56,9 @@
         },
         {
           "id": "daa.power"
+        },
+        {
+          "id": "daa.notify-bell"
         }
       ]
     },
@@ -138,6 +144,12 @@
     },
     {
       "id": "daa.image-picker"
+    },
+    {
+      "id": "daa.desktop-shortcuts"
+    },
+    {
+      "id": "daa.search"
     }
   ],
   "version": 1

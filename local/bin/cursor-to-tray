@@ -1,0 +1,29 @@
+#!/bin/bash
+# Glide the cursor up to a bar icon, then open that icon's panel.
+#   cursor-to-tray <bar widget id> <panel IPC target>
+#   cursor-to-tray daa.network omarchy.network
+# Used by the info bar's battery / Wi-Fi / Bluetooth rows (daa.infobar).
+# Near-instant: one hyprctl eval schedules 6 ease-out steps 10 ms apart
+# inside Hyprland, and opens the panel as the cursor lands.
+id=$1 target=$2
+[[ -n $id && -n $target ]] || { echo "usage: cursor-to-tray <widget id> <ipc target>" >&2; exit 1; }
+[[ $target =~ ^[A-Za-z0-9._-]+$ ]] || exit 1
+
+to=$(omarchy-shell omarchy.bar iconPos "$id" 2>/dev/null)
+if [[ $to != *,* ]]; then
+  exec omarchy-shell -q "$target" open
+fi
+
+hyprctl eval "
+local p = hl.get_cursor_pos()
+local fx, fy, tx, ty = p.x, p.y, ${to%,*}, ${to#*,}
+local n = 6
+for i = 1, n do
+  hl.timer(function()
+    local t = i / n
+    local e = 1 - (1 - t) ^ 3
+    hl.dispatch(hl.dsp.cursor.move({ x = math.floor(fx + (tx - fx) * e), y = math.floor(fy + (ty - fy) * e) }))
+    if i == n then hl.exec_cmd('omarchy-shell -q $target open') end
+  end, { timeout = i * 10, type = 'oneshot' })
+end
+" >/dev/null

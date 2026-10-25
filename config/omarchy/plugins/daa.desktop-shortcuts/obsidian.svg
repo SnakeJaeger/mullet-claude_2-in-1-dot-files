@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Obsidian's faceted gem as one white shape; the slivers are the facet edges. -->
+  <path fill="#ffffff" fill-rule="evenodd" d="M40 3 L76 19 L83 57 L63 97 L28 88 L17 47 Z
+    M41 12 L37 50 L39.5 50.5 L43.5 12.5 Z
+    M38 52 L64 89 L66 87.5 L40.5 51 Z
+    M39 49.5 L74 25 L72.5 23 L37.5 48 Z"/>
+</svg>

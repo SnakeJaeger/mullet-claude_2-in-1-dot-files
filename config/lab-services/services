@@ -1,6 +1,8 @@
 # Services on the lab box for the Go menu server card (~/.local/bin/server-status).
-# The host comes from the Remmina lab profile, like the lab card.
-# name | port | health path (any HTTP reply counts as up) | Nerd Font glyph
+# The host comes from the Remmina lab profile, like the lab card; "https"
+# services go through the box's Tailscale serve name (looked up from that
+# address), since their certificates are for that name.
+# name | port | health path (any HTTP reply counts as up) | Nerd Font glyph | scheme (http) | page to open (/)
 Jellyfin | 8096 | /health | 󰎁
-Immich | 2283 | /api/server/ping | 󰋩
-Calendar | 5232 | / | 󰃭
+Immich | 8443 | /api/server/ping | 󰋩 | https
+Calendar | 443 | /status.php | 󰃭 | https | /index.php/apps/calendar/

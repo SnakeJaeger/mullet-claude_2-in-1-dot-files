@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "daa.notify-bell",
+  "name": "Notification bell",
+  "version": "1.0.0",
+  "author": "daa",
+  "description": "Bell with the notification count; slides out every notification with Clear all",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Notification bell",
+    "description": "Bell with the notification count; slides out every notification with Clear all",
+    "category": "System",
+    "allowMultiple": false
+  }
+}

@@ -5,9 +5,9 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// Go menu system card, beside the lab card: CPU / RAM / disk / temperature as
-// meters, uptime in the header. Samples every 1.5s, only while `active` (menu
-// open). Click: the btop dropdown (SUPER + I).
+// Go menu system card, beside the lab card: CPU / RAM / disk / temperature /
+// internet latency (ping 1.1.1.1) as meters, uptime in the header. Samples
+// every 1.5s, only while `active` (menu open). Click: the btop dropdown (SUPER + I).
 Item {
   id: card
 
@@ -27,8 +27,9 @@ Item {
   property real diskTotal: 0
   property real temp: -1
   property int uptime: 0
+  property real netMs: -2           // ping to 1.1.1.1; -1 = no reply, -2 = not sampled yet
 
-  implicitHeight: Style.space(122)
+  implicitHeight: Style.space(140)
 
   function parse(text) {
     var lines = String(text || "").split("\n")
@@ -50,6 +51,8 @@ Item {
         temp = Number(f[1]) / 1000
       } else if (f[0] === "up" && f.length >= 2) {
         uptime = Number(f[1])
+      } else if (f[0] === "net") {
+        netMs = f.length >= 2 ? Number(f[1]) : -1
       }
     }
   }
@@ -70,12 +73,14 @@ Item {
   Process {
     id: poll
     command: ["sh", "-c",
+      // Internet ping runs alongside the rest; an empty "net" line = no reply.
+      "{ echo net $(ping -c1 -W1 1.1.1.1 2>/dev/null | sed -n 's/.*time=\\([0-9.]*\\).*/\\1/p'); } & " +
       "read _ u n s i w q sq st _ < /proc/stat; t1=$((u+n+s+i+w+q+sq+st)); i1=$((i+w)); sleep 0.25; " +
       "read _ u n s i w q sq st _ < /proc/stat; echo cpu $t1 $i1 $((u+n+s+i+w+q+sq+st)) $((i+w)); " +
       "awk '/^MemTotal/{t=$2} /^MemAvailable/{a=$2} /^SwapTotal/{st=$2} /^SwapFree/{sf=$2} END{print \"mem\",t,a,st,sf}' /proc/meminfo; " +
       "df -B1 --output=size,used / | tail -n1 | sed 's/^/disk /'; " +
       "for h in /sys/class/hwmon/hwmon*; do [ \"$(cat $h/name)\" = coretemp ] && echo temp $(cat $h/temp1_input); done; " +
-      "echo up $(cut -d. -f1 /proc/uptime)"]
+      "echo up $(cut -d. -f1 /proc/uptime); wait"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: card.parse(text) }
   }
 
@@ -135,7 +140,10 @@ Item {
         { label: "Disk", fraction: card.diskTotal > 0 ? card.diskUsed / card.diskTotal : 0,
           value: card.gib(card.diskUsed, 0) + "/" + card.gib(card.diskTotal, 0) + "G" },
         { label: "Temp", fraction: card.temp < 0 ? 0 : card.temp / 100,
-          value: card.temp < 0 ? "–" : Math.round(card.temp) + "°" }
+          value: card.temp < 0 ? "–" : Math.round(card.temp) + "°" },
+        // Latency against 200 ms, so it turns red past 180 ms; offline = full red bar.
+        { label: "Net", fraction: card.netMs === -1 ? 1 : card.netMs < 0 ? 0 : card.netMs / 200,
+          value: card.netMs === -2 ? "…" : card.netMs === -1 ? "offline" : Math.round(card.netMs) + " ms" }
       ]
 
       // CPU  ▬▬▬▬▬▬────────  9%

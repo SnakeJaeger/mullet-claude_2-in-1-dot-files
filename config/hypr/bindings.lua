@@ -127,9 +127,8 @@ o.bind("XF86PowerOff", "Power menu", "~/.local/bin/menu-toggle system", { locked
 o.bind("SUPER + CTRL + ALT + SPACE", "Super duper menu",
   [[omarchy-shell shell toggle omarchy.menu '{"menu":"root","egg":true}']])
 
--- Tap SUPER on its own: info bar (daa.infobar). Fires on release; a second
--- tap hides it, otherwise it fades after 4 s.
-o.bind("SUPER + Super_L", "Info bar", "omarchy-shell -q daa.infobar toggle", { release = true })
+-- (Tapping SUPER used to show just the info bar; it now opens the quick
+-- search, which brings the info bar up at the bottom with it -- see below.)
 
 -- Brightness keys on ~/.local/bin/brightness-step's scale: 100% = raw 4054
 -- (the panel's full 4095 is a much brighter jump, kept for SHIFT + up only),
@@ -145,3 +144,27 @@ o.bind("SHIFT + XF86MonBrightnessUp", "Brightness boost (panel maximum)", "brigh
 o.bind("SHIFT + XF86MonBrightnessDown", "Brightness minimum", "brightness-step min", { locked = true })
 o.bind("ALT + XF86MonBrightnessUp", "Brightness up precise", "brightness-step +1", { locked = true, repeating = true })
 o.bind("ALT + XF86MonBrightnessDown", "Brightness down precise", "brightness-step -1", { locked = true, repeating = true })
+
+-- Tap SUPER on its own: quick search box (daa.search), with the info bar at
+-- the bottom. A release bind, so it only fires when SUPER is let go without
+-- another key pressed in between.
+o.bind("SUPER + Super_L", "Quick search", "omarchy-shell shell toggle daa.search", { release = true })
+
+-- SUPER+ALT+digit: in a window group, switch to that tab (Omarchy's stock
+-- use of the key); otherwise go to that workspace the long way round -- the
+-- workspace indicator laps the whole top bar ("magellanic desktop
+-- selection", daa.desktop-workspaces). SUPER+SHIFT+digit stays stock (move
+-- the window there).
+for n = 1, 10 do
+  local key = "SUPER + ALT + code:" .. tostring(n + 9)
+  hl.unbind(key)
+  o.bind(key, "Group tab " .. n .. ", else workspace " .. n .. " (magellanic)", function()
+    local window = hl.get_active_window()
+    if window and window.group then
+      hl.dispatch(hl.dsp.group.active({ index = n }))
+      return
+    end
+    hl.dispatch(hl.dsp.focus({ workspace = tostring(n) }))
+    hl.exec_cmd("omarchy-shell -q daa.workspaces lap")
+  end)
+end

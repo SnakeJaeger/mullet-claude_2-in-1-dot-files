@@ -45,6 +45,13 @@ Item {
     holdTimer.restart()
   }
 
+  // Shown without the auto-fade, for as long as the quick search box
+  // (daa.search) is open; it hides it again on close.
+  function pin() {
+    show()
+    holdTimer.stop()
+  }
+
   function hide() {
     snap = true
     opened = false
@@ -155,6 +162,7 @@ Item {
     function toggle(): void { root.toggle() }
     function show(): void { root.show() }
     function hide(): void { root.hide() }
+    function pin(): void { root.pin() }
   }
 
   Timer {
@@ -239,7 +247,11 @@ Item {
     id: panel
     visible: root.opened || card.opacity > 0
     // Bottom middle of the screen (user's choice, 2026-10-24).
-    anchors { bottom: true; left: true; right: true }
+    // Only as wide as the card (centred by the layer shell), so clicks
+    // anywhere else never reach it -- an input mask on a full-width window
+    // never let clicks onto the card.
+    anchors { bottom: true }
+    implicitWidth: Math.ceil(card.width)
     implicitHeight: card.height + card.y + 4
 
     // Which edge the bar is on (as daa.osd reads it): only a visible bottom
@@ -260,8 +272,6 @@ Item {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
     margins.bottom: panel.barEdge === "bottom" && !root.barHidden ? Style.bar.sizeHorizontal + Style.space(4) + 6 : 10
-    // Look, don't touch: clicks pass through to whatever is underneath.
-    mask: Region {}
 
     Rectangle {
       id: card
@@ -269,10 +279,10 @@ Item {
       // time and weather stay centred (fixed widths let a long wifi name and
       // the bluetooth item run past the card's right edge).
       readonly property real flankWidth: Math.max(leftFlank.implicitWidth, rightFlank.implicitWidth)
-      width: Math.min(panel.width - 20,
+      width: Math.min((panel.screen ? panel.screen.width : 1440) - 20,
         flankWidth * 2 + centerStage.implicitWidth + topRow.spacing * 4 + root.pad * 2)
       height: content.implicitHeight + root.pad * 2
-      x: Math.round((panel.width - width) / 2)
+      x: 0
       // The window hugs the bottom edge and is card + gap tall, so y is the
       // gap above the card; the gap below is set by the window's margin.
       y: 4
@@ -283,6 +293,47 @@ Item {
       scale: root.opened ? 1 : 0.97
       Behavior on opacity { enabled: !root.snap; NumberAnimation { duration: root.opened ? 140 : 300; easing.type: Easing.OutCubic } }
       Behavior on scale { enabled: !root.snap; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+
+      // Breathing border: the window border's accent → coral gradient, drawn
+      // once, its opacity slowly rising and falling.
+      Canvas {
+        anchors.fill: parent
+        z: 10
+        property real breath: 0.35
+        SequentialAnimation on breath {
+          running: root.opened
+          loops: Animation.Infinite
+          NumberAnimation { to: 1; duration: 1700; easing.type: Easing.InOutSine }
+          NumberAnimation { to: 0.35; duration: 1700; easing.type: Easing.InOutSine }
+        }
+        opacity: breath
+        // Repaint when the palette changes (theme switch, ABACABB blood mode).
+        property color from: Commons.Color.accent
+        property color to: Commons.Color.urgent
+        onFromChanged: requestPaint()
+        onToChanged: requestPaint()
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.reset()
+          var lw = 1.5, o = lw / 2, r = Math.max(0, card.radius - o)
+          var w = width - lw, h = height - lw
+          var grad = ctx.createLinearGradient(0, 0, width, height)
+          grad.addColorStop(0, from)
+          grad.addColorStop(1, to)
+          ctx.strokeStyle = grad
+          ctx.lineWidth = lw
+          ctx.beginPath()
+          ctx.moveTo(o + r, o)
+          ctx.arcTo(o + w, o, o + w, o + h, r)
+          ctx.arcTo(o + w, o + h, o, o + h, r)
+          ctx.arcTo(o, o + h, o, o, r)
+          ctx.arcTo(o, o, o + w, o, r)
+          ctx.closePath()
+          ctx.stroke()
+        }
+      }
 
       // Placed rather than anchored to fill: the card takes its height from
       // this layout, and filling the card made it under-report its height
@@ -309,12 +360,30 @@ Item {
             Repeater {
               model: root.info.workspaces
               Rectangle {
+                id: pill
                 required property var modelData
-                readonly property bool current: modelData.id === root.info.active
+                // Live from Hyprland, so Tab-switching (daa.search) moves it at once.
+                readonly property bool current: modelData.id === (root.focusedId > 0 ? root.focusedId : root.info.active)
                 height: Style.space(30)
                 width: wsRow.implicitWidth + Style.space(14)
                 radius: height / 2
-                color: current ? Util.alpha(root.accent, 0.22) : Util.alpha(root.fg, 0.07)
+                color: current ? Util.alpha(root.accent, 0.22)
+                  : pillArea.containsMouse ? Util.alpha(root.fg, 0.16) : Util.alpha(root.fg, 0.07)
+                Behavior on color { ColorAnimation { duration: 90 } }
+
+                // Click: go to that workspace (closing the quick search if
+                // it's what brought the info bar up).
+                MouseArea {
+                  id: pillArea
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    Quickshell.execDetached(["hyprctl", "dispatch", "hl.dsp.focus({ workspace = \"" + pill.modelData.id + "\" })"])
+                    Quickshell.execDetached(["omarchy-shell", "-q", "shell", "hide", "daa.search"])
+                    root.hide()
+                  }
+                }
                 border.width: current ? 1 : 0
                 border.color: Util.alpha(root.accent, 0.7)
 
@@ -447,31 +516,47 @@ Item {
 
           Item { Layout.fillWidth: true }
 
-          // Battery, network, bluetooth.
-          Row {
+          // Battery, network, bluetooth: one per line, glyphs in a column,
+          // longest value first.
+          Column {
             id: rightFlank
             Layout.alignment: Qt.AlignVCenter
             Layout.preferredWidth: card.flankWidth
-            layoutDirection: Qt.RightToLeft
-            spacing: Style.space(14)
+            spacing: Style.space(3)
 
-            StatusItem {
-              glyph: !root.info.bluetooth.powered ? "󰂲" : root.info.bluetooth.connected.length > 0 ? "󰂱" : "󰂯"
-              label: !root.info.bluetooth.powered ? "Off" : root.info.bluetooth.connected.length > 0 ? root.info.bluetooth.connected[0] : "On"
-              lit: root.info.bluetooth.connected.length > 0
-            }
+            Repeater {
+              model: root.statusRows
+              Item {
+                id: statusRow
+                required property var modelData
+                width: statusLine.implicitWidth
+                height: statusLine.implicitHeight
 
-            StatusItem {
-              glyph: root.info.wifi !== "" ? "󰖩" : root.info.ethernet ? "󰈀" : "󰖪"
-              label: root.info.wifi !== "" ? root.info.wifi : root.info.ethernet ? "Wired" : "Offline"
-              lit: root.info.wifi !== "" || root.info.ethernet
-            }
+                Row {
+                  id: statusLine
+                  spacing: Style.space(8)
+                  opacity: statusArea.containsMouse ? 1 : 0.9
+                  StatusGlyph { glyph: statusRow.modelData.glyph; lit: statusRow.modelData.lit || statusArea.containsMouse }
+                  StatusValue { text: statusRow.modelData.text }
+                }
 
-            StatusItem {
-              visible: root.info.battery.percent >= 0
-              glyph: root.batteryGlyph(root.info.battery)
-              label: root.info.battery.percent + "%"
-              lit: root.info.battery.state === "charging"
+                // Click: close up, then the cursor glides to the matching bar
+                // icon and its panel opens (~/.local/bin/cursor-to-tray).
+                MouseArea {
+                  id: statusArea
+                  anchors.fill: parent
+                  anchors.margins: -Style.space(2)
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    Quickshell.execDetached(["omarchy-shell", "-q", "shell", "hide", "daa.search"])
+                    root.hide()
+                    Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/cursor-to-tray",
+                      statusRow.modelData.widget, statusRow.modelData.panel])
+                  }
+                }
+              }
+
             }
           }
         }
@@ -492,28 +577,40 @@ Item {
     }
   }
 
-  component StatusItem: Row {
-    property string glyph: ""
-    property string label: ""
-    property bool lit: false
-    spacing: Style.space(5)
-
-    Text {
-      anchors.verticalCenter: parent.verticalCenter
-      text: parent.glyph
-      color: parent.lit ? root.accent : root.fg
-      font.family: Style.font.family
-      font.pixelSize: Style.font.title
-    }
-
-    Text {
-      anchors.verticalCenter: parent.verticalCenter
-      text: parent.label
-      color: root.fg
-      font.family: Style.font.family
-      font.pixelSize: Style.font.bodySmall
-      elide: Text.ElideRight
-      width: Math.min(implicitWidth, Style.space(110))
-    }
+  readonly property var statusRows: {
+    var rows = []
+    var b = info.battery, bt = info.bluetooth
+    if (b.percent >= 0)
+      rows.push({ glyph: batteryGlyph(b), lit: b.state === "charging", widget: "daa.power", panel: "omarchy.power",
+        text: b.percent + "%" + (b.state === "charging" ? "  charging" : "") })
+    rows.push({ glyph: info.wifi !== "" ? "󰖩" : info.ethernet ? "󰈀" : "󰖪", lit: info.wifi !== "" || info.ethernet,
+      widget: "daa.network", panel: "omarchy.network",
+      text: info.wifi !== "" ? info.wifi : info.ethernet ? "Wired" : "Offline" })
+    rows.push({ glyph: !bt.powered ? "󰂲" : bt.connected.length > 0 ? "󰂱" : "󰂯", lit: bt.connected.length > 0,
+      widget: "omarchy.bluetooth", panel: "omarchy.bluetooth",
+      text: !bt.powered ? "Off" : bt.connected.length > 0 ? bt.connected[0] : "On" })
+    // Longest first (stable for equal lengths).
+    return rows.map(function(r, i) { r.i = i; return r })
+      .sort(function(x, y) { return y.text.length - x.text.length || x.i - y.i })
   }
+
+  component StatusGlyph: Text {
+    property string glyph: ""
+    property bool lit: false
+    width: Style.space(18)
+    horizontalAlignment: Text.AlignHCenter
+    text: glyph
+    color: lit ? root.accent : root.fg
+    font.family: Style.font.family
+    font.pixelSize: Style.font.body
+  }
+
+  component StatusValue: Text {
+    color: root.fg
+    font.family: Style.font.family
+    font.pixelSize: Style.font.bodySmall
+    elide: Text.ElideRight
+    width: Math.min(implicitWidth, Style.space(130))
+  }
+
 }

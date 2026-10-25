@@ -1,7 +1,9 @@
 #!/bin/bash
 # Go menu server card (daa.menu/ServerCard.qml): one JSON line with the state
 # of each lab-box service listed in ~/.config/lab-services/services.
-#   {"host":true,"services":[{"name":"Jellyfin","icon":"…","url":"http://…:8096","up":true}, …]}
+#   {"host":true,"remote":true,"services":[{"name":"Jellyfin","icon":"…","url":"http://…:8096","up":true}, …]}
+# "remote" is whether the profile's VNC/RDP port accepts a TCP connection
+# (the card's Remmina tile).
 # The lab address comes from the Remmina profile (same as lab-status), so
 # nothing here names the box. `server-status open <name>` opens that
 # service's web page.
@@ -9,24 +11,52 @@
 PROFILE="${LAB_PROFILE:-$HOME/.local/share/remmina/lab.remmina}"
 LIST="$HOME/.config/lab-services/services"
 host=$(sed -n 's/^server=//p' "$PROFILE" 2>/dev/null | head -1)
+vncport=${host##*:}; [[ $vncport == "$host" ]] && vncport=5900
 host=${host%%:*}
 
 services() { grep -v '^\s*#' "$LIST" 2>/dev/null | grep '|'; }
 field() { cut -d'|' -f"$2" <<<"$1" | sed 's/^ *//; s/ *$//'; }
 
+# Tailscale serve name for the lab address (the https services' certificates
+# are issued for it), looked up once and cached.
+tsname() {
+  local cache="${XDG_CACHE_HOME:-$HOME/.cache}/server-status-tsname"
+  if [[ ! -s $cache || $(head -1 "$cache") != "$host" ]]; then
+    local name
+    name=$(tailscale status --json 2>/dev/null | jq -r --arg ip "$host" \
+      '.Peer[] | select(.TailscaleIPs | index($ip)) | .DNSName | rtrimstr(".")' | head -1)
+    [[ -n $name ]] && printf '%s\n%s\n' "$host" "$name" >"$cache"
+  fi
+  sed -n 2p "$cache" 2>/dev/null
+}
+
+# Base URL of a service line: http://host:port, or https://<serve name>[:port].
+base_url() {
+  local port scheme name
+  port=$(field "$1" 2); scheme=$(field "$1" 5)
+  if [[ $scheme == https ]]; then
+    name=$(tsname); [[ -z $name ]] && name=$host
+    [[ $port == 443 ]] && echo "https://$name" || echo "https://$name:$port"
+  else
+    echo "http://$host:$port"
+  fi
+}
+
 if [[ $1 == open ]]; then
   while IFS= read -r line; do
-    [[ $(field "$line" 1) == "$2" ]] && exec xdg-open "http://$host:$(field "$line" 2)"
+    open=$(field "$line" 6)
+    [[ $(field "$line" 1) == "$2" ]] && exec xdg-open "$(base_url "$line")${open:-/}"
   done < <(services)
   exit 1
 fi
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+{ [[ -n $host ]] && timeout 1.5 bash -c "exec 3<>/dev/tcp/$host/$vncport" 2>/dev/null && touch "$tmp/remote"; } &
 i=0
 while IFS= read -r line; do
-  port=$(field "$line" 2); path=$(field "$line" 3)
-  { [[ -n $host ]] && curl -s -o /dev/null -m 1.5 -w '%{http_code}' "http://$host:$port$path" >"$tmp/$i"; } &
+  url="$(base_url "$line")$(field "$line" 3)"
+  { [[ -n $host ]] && curl -s -o /dev/null -m 1.5 -w '%{http_code}' "$url" >"$tmp/$i"; } &
   i=$((i + 1))
 done < <(services)
 wait
@@ -36,7 +66,9 @@ while IFS= read -r line; do
   code=$(cat "$tmp/$i" 2>/dev/null)
   up=false; [[ -n $code && $code != 000 ]] && up=true
   jq -cn --arg name "$(field "$line" 1)" --arg icon "$(field "$line" 4)" \
-    --arg url "http://$host:$(field "$line" 2)" --argjson up "$up" \
+    --arg url "$(base_url "$line")" --argjson up "$up" \
     '{name: $name, icon: $icon, url: $url, up: $up}'
   i=$((i + 1))
-done < <(services) | jq -cs --argjson host "$([[ -n $host ]] && echo true || echo false)" '{host: $host, services: .}'
+done < <(services) | jq -cs --argjson host "$([[ -n $host ]] && echo true || echo false)" \
+  --argjson remote "$([[ -e $tmp/remote ]] && echo true || echo false)" \
+  '{host: $host, remote: $remote, services: .}'

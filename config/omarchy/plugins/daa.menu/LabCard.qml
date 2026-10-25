@@ -8,8 +8,9 @@ import qs.Ui
 // Go menu lab card: is the lab box up, how fast, is GNS3 serving, and are
 // Tailscale / Mullvad on. Polls ~/.local/bin/lab-status (which reads the lab
 // address from the Remmina profile) every 2s: the full check while `active`
-// (menu open), just the pings otherwise, so the sparkline always holds the
-// last minute. It tracks the lab's ping, or 1.1.1.1 when the lab is down.
+// (menu open), just the heartbeat otherwise, so the sparkline always holds the
+// last minute. The heartbeat is a `tailscale ping` to the lab, so it measures
+// the tailnet link itself (internet latency is on the system card).
 // Click: open VNC.
 Item {
   id: card
@@ -23,21 +24,17 @@ Item {
   readonly property color down: Commons.Color.urgent
 
   property var status: null
-  property var samples: []        // last 30 pings in ms (null = no reply)
-  property string target: ""      // "lab" or "inet": what samples measure
+  property var samples: []        // last 30 tailscale pings in ms (null = no reply)
   readonly property bool labUp: !!status && status.lab !== null
-  readonly property var latest: samples.length ? samples[samples.length - 1] : null
 
   implicitHeight: Style.space(110)
 
   function record(json) {
     var next
     try { next = JSON.parse(json) } catch (e) { return }
-    var t = next.lab !== null ? "lab" : "inet"
-    var list = t === card.target ? card.samples.slice() : []
-    list.push(t === "lab" ? next.lab : next.inet)
+    var list = card.samples.slice()
+    list.push(next.lab)
     if (list.length > 30) list.shift()
-    card.target = t
     card.samples = list
     // Ping-only samples refresh the latency but keep the last full status.
     var merged = Object.assign({}, card.status || {}, next)
@@ -101,7 +98,10 @@ Item {
         }
         Text {
           text: !card.status ? "checking…"
-            : card.labUp ? Math.round(card.status.lab) + " ms" : "offline"
+            // "direct" once NAT traversal has a path, else the DERP relay region.
+            : card.labUp ? (card.status.route === "direct" ? "tailscale direct"
+                : "tailscale DERP " + card.status.route) + ": " + Math.round(card.status.lab) + " ms"
+            : "offline"
           color: card.foreground
           font.family: card.fontFamily
           font.pixelSize: Style.font.body
@@ -109,7 +109,7 @@ Item {
       }
     }
 
-    // Ping sparkline, captioned below with what it's measuring.
+    // Heartbeat sparkline.
     Item {
       width: parent.width
       height: Style.space(26)
@@ -118,7 +118,7 @@ Item {
         id: spark
         anchors.fill: parent
         property var points: card.samples
-        property color line: card.target === "lab" ? card.accent : Util.alpha(card.foreground, 0.6)
+        property color line: card.accent
         onPointsChanged: requestPaint()
         onLineChanged: requestPaint()
         onWidthChanged: requestPaint()
@@ -165,51 +165,44 @@ Item {
       width: parent.width
       height: Style.font.bodySmall + Style.space(2)
 
-      Text {
-        anchors.right: parent.right
+      StatusDot {
+        anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
-        visible: card.target === "inet"
-        text: "internet " + (card.latest !== null ? Math.round(card.latest) + " ms" : "down")
-        color: card.foreground
-        opacity: 0.58
-        font.family: card.fontFamily
-        font.pixelSize: Style.font.bodySmall
+        label: card.status && card.status.gns3 ? "GNS3 " + card.status.gns3 : "GNS3"
+        on: !!(card.status && card.status.gns3)
       }
     }
 
-    // ● GNS3   ● Tailscale   ○ Mullvad
+    // ● Tailscale   ○ Mullvad
     Row {
       spacing: Style.space(14)
 
-      Repeater {
-        model: [
-          { label: card.status && card.status.gns3 ? "GNS3 " + card.status.gns3 : "GNS3", on: !!(card.status && card.status.gns3) },
-          { label: "Tailscale", on: !!(card.status && card.status.tailscale) },
-          { label: "Mullvad", on: !!(card.status && card.status.mullvad) }
-        ]
+      StatusDot { label: "Tailscale"; on: !!(card.status && card.status.tailscale) }
+      StatusDot { label: "Mullvad"; on: !!(card.status && card.status.mullvad) }
+    }
+  }
 
-        Row {
-          required property var modelData
-          spacing: Style.space(5)
+  // ● label: filled accent dot when on, hollow and dimmed when off.
+  component StatusDot: Row {
+    property string label: ""
+    property bool on: false
+    spacing: Style.space(5)
 
-          Rectangle {
-            anchors.verticalCenter: parent.verticalCenter
-            width: Style.space(6)
-            height: width
-            radius: width / 2
-            color: modelData.on ? card.accent : "transparent"
-            border.width: modelData.on ? 0 : 1
-            border.color: Util.alpha(card.foreground, 0.45)
-          }
-          Text {
-            text: modelData.label
-            color: card.foreground
-            opacity: modelData.on ? 1 : 0.58
-            font.family: card.fontFamily
-            font.pixelSize: Style.font.bodySmall
-          }
-        }
-      }
+    Rectangle {
+      anchors.verticalCenter: parent.verticalCenter
+      width: Style.space(6)
+      height: width
+      radius: width / 2
+      color: parent.on ? card.accent : "transparent"
+      border.width: parent.on ? 0 : 1
+      border.color: Util.alpha(card.foreground, 0.45)
+    }
+    Text {
+      text: parent.label
+      color: card.foreground
+      opacity: parent.on ? 1 : 0.58
+      font.family: card.fontFamily
+      font.pixelSize: Style.font.bodySmall
     }
   }
 

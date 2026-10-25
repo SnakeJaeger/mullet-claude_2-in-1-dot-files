@@ -334,7 +334,9 @@ function searchScore(items, entry, query) {
   var descriptionText = String(entry.description || "").toLowerCase()
   var score = 80
 
-  if (label === needle) score = entry.parent === "root" ? 2 : 0
+  // An installed app whose name contains the query comes first of all.
+  if (entry.kind === "app" && label.indexOf(needle) >= 0) score = label.indexOf(needle) === 0 ? -20 : -15
+  else if (label === needle) score = entry.parent === "root" ? 2 : 0
   // An installed app whose name contains the query as a whole word ("zen"
   // for Zen Browser) beats exact-labeled menu entries like Install > Zen.
   else if (entry.kind === "app" && label.split(/\s+/).indexOf(needle) >= 0) score = 0
