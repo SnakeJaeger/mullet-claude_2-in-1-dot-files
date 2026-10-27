@@ -294,8 +294,8 @@ Column {
   }
 
   // ---- Tablet colour ----
-  Heading { text: "Tablet colour" }
-  Hint { text: "Tablet mode's own accent: the tiles, menu highlights, the touch bar. The laptop keeps its colour." }
+  Heading { text: "Tablet color" }
+  Hint { text: "Tablet mode's own accent: the tiles, menu highlights, the touch bar. The laptop keeps its color." }
   Flow {
     x: Style.space(10)
     width: page.width - Style.space(20)

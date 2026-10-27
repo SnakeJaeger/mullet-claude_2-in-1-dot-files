@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "daa.desktop-minimized",
+  "name": "Minimized windows",
+  "version": "1.0.0",
+  "author": "daa",
+  "description": "Icons for windows parked on special:minimized (~/.local/bin/minimize); click to bring one back",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Minimized windows",
+    "description": "Click an icon to restore that window",
+    "category": "Compositor",
+    "allowMultiple": false
+  }
+}

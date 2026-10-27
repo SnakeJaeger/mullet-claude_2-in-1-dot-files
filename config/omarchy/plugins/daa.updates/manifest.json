@@ -4,7 +4,7 @@
   "name": "Update count",
   "version": "1.0.0",
   "author": "daa",
-  "description": "Pending package updates (repo + AUR), coloured by how many",
+  "description": "Pending package updates (repo + AUR), colored by how many",
   "kinds": [
     "bar-widget"
   ],
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "Update count",
-    "description": "Pending package updates (repo + AUR), coloured by how many",
+    "description": "Pending package updates (repo + AUR), colored by how many",
     "category": "System",
     "allowMultiple": false
   }

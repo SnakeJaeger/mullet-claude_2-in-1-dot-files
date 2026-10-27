@@ -48,7 +48,7 @@ Item {
     onLoaded: { try { root.ui = JSON.parse(text()) || {} } catch (e) { root.ui = {} } }
     onLoadFailed: root.ui = {}
   }
-  // The theme's extra colours, for the trails and "Theme colours" tiles.
+  // The theme's extra colours, for the trails and "Theme colors" tiles.
   property var themePalette: ["#9ece6a", "#bb9af7", "#e0af68", "#ff9e64", "#73daca", "#7aa2f7"]
   FileView {
     path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme/colors.toml"

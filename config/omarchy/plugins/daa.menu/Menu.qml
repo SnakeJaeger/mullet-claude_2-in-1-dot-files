@@ -460,7 +460,7 @@ Item {
   }
 
   // Easter egg: two stick figures sword fighting under "Update" in the Go
-  // list. Shows on about 1 in 12 openings, or when "omarchy!" is typed (plain
+  // list. Shows on about 1 in 25 openings, or when "omarchy!" is typed (plain
   // "omarchy" is a real search: it finds Omarchy's own page).
   property bool duelOn: false
   // ABACABB blood mode (daa.search) is on: the accent is its coral. Then the
@@ -1821,7 +1821,7 @@ Item {
           slinkAnim.stop(); dealAnim.stop()
           root.slinkMs = -1; goFooter.dealClock = 1
         }
-        root.duelOn = root.uiOpt("duel", true) && (root.bloodMode || Math.random() < 1 / 12)
+        root.duelOn = root.uiOpt("duel", true) && (root.bloodMode || Math.random() < 1 / 25)
       }
       else card.swing = 1
     }

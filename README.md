@@ -64,7 +64,7 @@ Lua config.
 
 | | |
 |---|---|
-| <img src="screenshots/tablet-11-greeter.webp" alt="Tablet greeter: Windows Phone style tiles in the Omarchy logo frame"><br>Tablet greeter: fold back and pick what you came to do. **Continue** tiles pick up the last book, comic or drawing | <img src="screenshots/desktop-31-settings-tablet.webp" alt="Settings, Tablet page: greeter tiles, tablet colour and wallpaper"><br>Settings → Tablet: greeter tiles, tablet colour and wallpaper, bar style and size, text size |
+| <img src="screenshots/tablet-11-greeter.webp" alt="Tablet greeter: Windows Phone style tiles in the Omarchy logo frame"><br>Tablet greeter: fold back and pick what you came to do. **Continue** tiles pick up the last book, comic or drawing | <img src="screenshots/desktop-31-settings-tablet.webp" alt="Settings, Tablet page: greeter tiles, tablet color and wallpaper"><br>Settings → Tablet: greeter tiles, tablet color and wallpaper, bar style and size, text size |
 | <img src="screenshots/desktop-30-settings-hub.webp" alt="Settings hub home: search, categories and device settings apps"><br>Settings hub (Go menu → **Settings**): search every setting; device settings apps by category | <img src="screenshots/desktop-32-apps-overview.webp" alt="Apps overview: every open app by workspace with live previews"><br>Apps overview (`SUPER + TAB`, or three fingers up): drag a card to move it, × to close |
 | <img src="screenshots/desktop-33-gestures-button.webp" alt="Keybinds panel with the Gestures button, comets lapping it"><br>Keybinds panel: **Gestures** lists every swipe; two comets lap the button as it opens | <img src="screenshots/desktop-34-power-bar.webp" alt="Power bar across the middle of the dimmed screen"><br>Power bar (`SUPER + ESC`): one letter each, S L R O D |
 | <img src="screenshots/desktop-35-zap.webp" alt="Zap scope over a terminal: kill Alacritty, all 3 windows"><br>Zap (`SUPER + SHIFT + Q`): click a window to end every window of that program |  |
@@ -157,7 +157,7 @@ blur behind them.
   the desktop's direction at 3.5× finger travel, coasts after you lift off,
   fingers back down brake it, and the ends flash a cyan edge glow. (Qt treats a
   touchpad scroll as a finger drag with no momentum, so this takes it over.)
-- **Sublime Text** follows the theme too: a colour scheme template, near-black
+- **Sublime Text** follows the theme too: a color scheme template, near-black
   tab strip and see-through command palette (`Ctrl + P`).
 - Tuned gaps so windows line up with the floating bar.
 - **Notifications** (`daa.notifications`): bottom-right, fly in from the
@@ -303,7 +303,7 @@ searching.
   with the launcher's categories; **Keybinds** shows every binding, searchable,
   and a click runs it (right-click opens `bindings.lua` in Sublime). Tab walks
   the footer. Try `SUPER + CTRL + ALT + SPACE` for the version without brakes,
-  and look out for the duel under Update (1 in 12, or type `omarchy!`). The
+  and look out for the duel under Update (1 in 25, or type `omarchy!`). The
   **Lab** card's heartbeat is a `tailscale ping` to the lab box (latency and
   whether the route is direct or via a DERP relay); the **System** card adds
   internet latency.
@@ -312,7 +312,7 @@ searching.
 - **App launcher** (`SUPER + R`): a square 5 × 6 grid framed by the Omarchy
   logo, drawn to scale from the logo's 13 × 13 grid. Light trails start at the
   logo's seven entrances, lead white, then cyan, coral or one rotating Tokyo
-  Night colour, glow into the channel between the lines, and never jump a gap.
+  Night color, glow into the channel between the lines, and never jump a gap.
 - **Password dialog** (`daa.polkit`): rises from the bottom and rests a third
   of the way up. The speakers don't work yet, so it also **spins the fans
   up** (`~/.local/bin/attention-fans`: half the cores busy, at most 20 s,
@@ -363,12 +363,14 @@ group's tab instead (Omarchy's own use of them).
 
 ### Settings hub, apps overview, power bar and zap
 - **Settings hub** (`daa.settings`; Go menu footer **Settings**, `SUPER + CTRL + ALT + S`,
-  `/settings` in the quick search). A sidebar of pages (themes and colours,
-  motion, top bar, logo card, **tablet**, windows, rules, dropdowns, keys, Go
+  `/settings` in the quick search). A sidebar of pages (themes and colors,
+  motion, top bar, favorites, **tablet**, windows, rules, dropdowns, keys, Go
   menu, device settings, notifications, power, startup, login, backups, lab)
   with a Home page that searches every setting. Every animation has a switch,
   most have a speed slider. Writes `~/.config/omarchy/daa-ui.json`; plugins
-  watch it, so changes apply live. A close button; clicks outside don't close it.
+  watch it, so changes apply live. It opens as an ordinary window: float or
+  tile it, or minimize it to the bar (a chip after the app name brings it back).
+  Dropdowns → **Select from installed** picks any app, with its icon, by typing.
 - **Apps overview** (`daa.overview`, `SUPER + TAB`, three fingers up on the
   touchpad or screen, or a corner swipe in tablet mode). Every open app
   except dropdowns, one row per workspace with a live preview. Tap to go
@@ -405,7 +407,7 @@ same script backs the tablet menu and buttons.
 - Starts **edge-swipe gestures** (lisgd), the **on-screen keyboard** (wvkbd,
   pops up on text fields) and **auto-rotation** (iio-sensor-proxy). Finger
   and pen input are remapped to match each rotation.
-- Switches to **tablet-mode colours**: coral accent, borderless menus and
+- Switches to **tablet-mode colors**: coral accent, borderless menus and
   notifications.
 - Switches to the **tablet wallpaper**. Each mode remembers its own
   wallpaper: whatever you pick while in a mode sticks to that mode.
@@ -413,7 +415,7 @@ same script backs the tablet menu and buttons.
 
 ### The greeter (`daa.tablet-greeter`)
 Folding back usually means you're about to watch, read, draw or play, so
-tablet mode opens on big Windows Phone style tiles in the tablet colour,
+tablet mode opens on big Windows Phone style tiles in the tablet color,
 inside the launcher's Omarchy-logo frame with its comets. Small, wide and
 large tiles; a live clock and battery tile; tiles swing in like a turnstile
 and tilt under your finger.
@@ -427,7 +429,7 @@ and tilt under your finger.
   don't dismiss it.
 - Reopen it from the Omarchy logo on the tablet bar or the tablet menu.
 - **Settings → Tablet** edits the tiles (order, size, add any app),
-  background opacity, tile colours and icons, tablet colour and wallpaper,
+  background opacity, tile colors and icons, tablet color and wallpaper,
   tablet bar style (solid, floating, glass, clear) and size, and text size.
 
 Unfolding puts everything back exactly as it was.
@@ -526,14 +528,14 @@ through Omarchy's own template system (`~/.config/omarchy/themed/*.tpl`) and a
   Omarchy in each installed KDE app's own settings (KDE apps read their scheme
   choice from their own rc file, not `kdeglobals`).
 - It also builds a small `Omarchy-Qt` icon theme on top of the Omarchy one:
-  light outline icons for Dolphin's Places sidebar (Breeze's, recoloured to
-  the theme foreground, since KDE only recolours icons on Plasma), with
+  light outline icons for Dolphin's Places sidebar (Breeze's, recolored to
+  the theme foreground, since KDE only recolors icons on Plasma), with
   `breeze-dark` or `breeze` filling the gaps to match light or dark themes.
 - Tip: Dolphin won't accept an empty name for a Places entry, but a
   zero-width space works, giving icon-only entries.
 
 **Catfish** is GTK 3. It gets its own theme, `Omarchy-Catfish`
-(`themed/catfish-gtk3.css.tpl`, dark Adwaita plus Dolphin-style colours),
+(`themed/catfish-gtk3.css.tpl`, dark Adwaita plus Dolphin-style colors),
 and only the `SUPER + D` dropdown launches it with
 `GTK_THEME=Omarchy-Catfish`. Other GTK apps are untouched. (GTK 3 only lets
 CSS target a window by name if the app sets one, and Catfish doesn't.)

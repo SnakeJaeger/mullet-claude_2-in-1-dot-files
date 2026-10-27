@@ -25,14 +25,14 @@ Column {
   readonly property var extras: [
     ["look", "Icon theme", "Follow the Omarchy theme or pick one"],
     ["look", "Cursor theme and size", ""],
-    ["look", "Accent colours", "Override the theme's accent and second accent"],
+    ["look", "Accent colors", "Override the theme's accent and second accent"],
     ["bar", "Bar islands", "Logo card, app name, now playing"],
     ["bar", "Hide or reorder bar widgets", ""],
     ["bar", "Clock format", "12 / 24 hour, date, seconds"],
     ["bar", "Info bar items", "Calendar event, weather, battery, network, bluetooth, quote"],
     ["bar", "Quotes", "Edit the info bar's quotes"],
-    ["favorites", "Favourite apps", "Top row of the logo card"],
-    ["favorites", "Icon colour", "Original, white or accent"],
+    ["favorites", "Favorites", "Top row of the logo card"],
+    ["favorites", "Icon color", "Original, white or accent"],
     ["rules", "Window opacity per app", ""],
     ["rules", "Always on top", "Pin a window to every workspace"],
     ["rules", "Open an app on a workspace", ""],
@@ -204,7 +204,7 @@ Column {
             visible: !res.modelData.icon
             text: res.modelData.glyph || ""
             color: page.selected === res.index ? page.accent : page.fg
-            font.family: Style.font.family
+            font.family: res.modelData.glyph === "\ue900" ? "omarchy" : Style.font.family
             font.pixelSize: Style.font.body
           }
         }
@@ -286,7 +286,7 @@ Column {
           Row {
             spacing: Style.space(8)
             bottomPadding: Style.space(4)
-            Text { text: tile.modelData.icon; color: page.accent; font.family: Style.font.family; font.pixelSize: Style.font.title }
+            Text { text: tile.modelData.icon; color: page.accent; font.family: tile.modelData.icon === "\ue900" ? "omarchy" : Style.font.family; font.pixelSize: Style.font.title }
             Text { text: tile.modelData.name; color: page.fg; font.family: page.font; font.pixelSize: Style.font.body; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
           }
           Repeater {

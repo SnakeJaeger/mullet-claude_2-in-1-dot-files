@@ -61,7 +61,9 @@ Item {
       { key: "windowGapsIn", label: "Gap between windows", slider: true, min: 0, max: 20, def: 5, step: 1, unit: " px" },
       { key: "windowGapsOut", label: "Gap to screen edge", slider: true, min: 0, max: 30, def: 10, step: 1, unit: " px" },
       { key: "windowBorder", label: "Border width", slider: true, min: 0, max: 5, def: 1, step: 1, unit: " px" },
-      { key: "windowRounding", label: "Corner rounding", slider: true, min: 0, max: 20, def: 6, step: 1, unit: " px" } ] },
+      { key: "windowRounding", label: "Corner rounding", slider: true, min: 0, max: 20, def: 6, step: 1, unit: " px" },
+      { key: "settingsWindow", label: "Settings opens as", hint: "A window can tile, float and minimize to the bar", choice: true, def: "app",
+        options: [["app", "Window"], ["overlay", "Overlay"]] } ] },
     { title: "Notifications", page: "notifications", rows: [
       { key: "notificationSeconds", label: "Shown for", hint: "Hover still pauses; critical ones stay", slider: true, min: 3, max: 60, def: 10, step: 1, unit: " s" },
       { key: "notificationHistory", label: "History kept", hint: "In the bell's panel", slider: true, min: 10, max: 200, def: 50, step: 5, unit: "" },
@@ -100,10 +102,10 @@ Item {
       { key: "tabletContinue", label: "Continue tiles", hint: "Pick up the last book, comic, drawing or show where you left off" },
       { key: "tabletTurnstile", label: "Turnstile", hint: "Tiles swing in and out" },
       { key: "tabletGreeterOpacity", label: "Background opacity", hint: "The box behind the tiles, and the dimming", slider: true, min: 15, max: 100, def: 85, step: 5, unit: " %" },
-      { key: "tabletTileColors", label: "Tile colour", choice: true, def: "accent",
-        options: [["accent", "Tablet colour"], ["palette", "Theme colours"], ["dark", "Dark"]] },
+      { key: "tabletTileColors", label: "Tile color", choice: true, def: "accent",
+        options: [["accent", "Tablet color"], ["palette", "Theme colors"], ["dark", "Dark"]] },
       { key: "tabletTileIcons", label: "Icons", choice: true, def: "colour",
-        options: [["colour", "Full colour"], ["mono", "White"]] } ] },
+        options: [["colour", "Full color"], ["mono", "White"]] } ] },
     { title: "Tablet bar", page: "tablet", rows: [
       { key: "tabletBarStyle", label: "Style", choice: true, def: "solid",
         options: [["solid", "Solid"], ["floating", "Floating"], ["glass", "Glass"], ["clear", "Clear"]] },
@@ -175,11 +177,11 @@ Item {
   readonly property var nav: [
     { page: "home", icon: "󰋜", label: "Home" },
     { group: "Look and feel" },
-    { page: "look", icon: "󰏘", label: "Themes and colours", keywords: "icons cursor accent colour color theme" },
+    { page: "look", icon: "󰏘", label: "Themes and colors", keywords: "icons cursor accent colour color theme" },
     { page: "motion", icon: "󰄄", label: "Motion", keywords: "animations speed trails comets launcher cursor easter eggs" },
     { page: "bar", icon: "󰕮", label: "Top bar", keywords: "islands widgets clock info bar quotes" },
-    { page: "favorites", icon: "󰣇", label: "Logo card", keywords: "favorites favourites shortcuts icons" },
-    { page: "tablet", icon: "󰓶", label: "Tablet", keywords: "tablet mode greeter tiles touch bar size style floating glass wallpaper accent colour text" },
+    { page: "favorites", icon: "", label: "Favorites", keywords: "favorites favourites shortcuts icons logo card omarchy" },
+    { page: "tablet", icon: "󰓶", label: "Tablet", keywords: "tablet mode greeter tiles touch bar size style floating glass wallpaper accent color colour text" },
     { group: "Desktop" },
     { page: "windows", icon: "󰖯", label: "Windows and workspaces", keywords: "gaps border rounding workspaces magellanic" },
     { page: "rules", icon: "󰖲", label: "Window rules", keywords: "opacity float pin always on top" },
@@ -527,13 +529,44 @@ Item {
   }
 
   property color background: Commons.Color.menu.background
+  readonly property color solidBackground: Qt.rgba(background.r, background.g, background.b, 0.97)
   property color foreground: Commons.Color.menu.text
   property color accent: Commons.Color.accent
   property string fontFamily: Style.font.menuFamily
+  // The Omarchy logo (U+E900) is in the "omarchy" font; other glyphs are Nerd Font.
+  function glyphFont(g) { return g === "\ue900" ? "omarchy" : Style.font.family }
+
+  // "settingsWindow": "app" (default) makes it an ordinary window: it tiles,
+  // floats, minimizes to the bar (~/.local/bin/minimize) and closes with
+  // SUPER+W. "overlay" is the old full-screen popup over a dimmed desktop.
+  // The same box moves between the two.
+  readonly property bool appMode: (root.ui.settingsWindow || "app") === "app"
+  readonly property string windowTitle: "Desktop settings"
+
+  FloatingWindow {
+    id: appWin
+    visible: root.opened && root.appMode
+    title: root.windowTitle
+    color: root.solidBackground
+    implicitWidth: Style.space(960)
+    implicitHeight: Style.space(720)
+    minimumSize: Qt.size(Style.space(640), Style.space(420))
+    // Closed from outside (SUPER+W): tell the shell it's gone.
+    onVisibleChanged: if (!visible && root.opened && root.appMode) root.dismiss()
+  }
+
+  // Float or tile the window / minimize it to the bar.
+  function windowAction(what) {
+    var find = "a=$(hyprctl clients -j | jq -r --arg t \"$1\" 'first(.[] | select(.title == $t) | .address) // empty'); " +
+      "[ -n \"$a\" ] || exit 0; "
+    var cmd = what === "minimize" ? find + "~/.local/bin/minimize \"$a\""
+      : find + "hyprctl dispatch \"hl.dsp.window.float({ window = 'address:$a', action = 'toggle' })\" >/dev/null"
+    Quickshell.execDetached(["bash", "-c", cmd, "_", root.windowTitle])
+  }
 
   PanelWindow {
     id: panel
-    visible: root.opened
+    visible: root.opened && !root.appMode
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     WlrLayershell.namespace: "omarchy-settings"
@@ -563,50 +596,61 @@ Item {
     }
 
     Rectangle {
-      id: closeButton
-      z: 10
-      anchors.top: box.top
-      anchors.right: box.right
-      anchors.margins: Style.space(12)
-      width: Style.space(32)
-      height: width
-      radius: width / 2
-      scale: box.scale
-      opacity: box.opacity
-      color: closeArea.containsMouse ? Util.alpha(Commons.Color.urgent, 0.25) : Qt.rgba(1, 1, 1, 0.06)
-      Text {
-        anchors.centerIn: parent
-        text: "󰅖"
-        color: closeArea.containsMouse ? Commons.Color.urgent : root.foreground
-        font.family: Style.font.family
-        font.pixelSize: Style.font.body
-      }
-      MouseArea {
-        id: closeArea
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        onClicked: root.dismiss()
-      }
-    }
-
-    Item {
-      id: keys
-      focus: true
-      Keys.onEscapePressed: root.dismiss()
-    }
-
-    Rectangle {
       id: box
-      width: Math.min(parent.width - Style.space(40), Style.space(960))
-      height: Math.min(parent.height - Style.space(40), Style.space(720))
+      parent: root.appMode ? appWin.contentItem : panel.contentItem
+      width: root.appMode ? parent.width : Math.min(parent.width - Style.space(40), Style.space(960))
+      height: root.appMode ? parent.height : Math.min(parent.height - Style.space(40), Style.space(720))
       anchors.centerIn: parent
-      radius: Style.space(14)
-      color: root.background
+      radius: root.appMode ? 0 : Style.space(14)
+      // As a window it sits over other apps, not a dimmed desktop: near-solid.
+      color: root.appMode ? root.solidBackground : root.background
       clip: true
 
       // Clicks inside don't close it.
-      MouseArea { anchors.fill: parent }
+      MouseArea { anchors.fill: parent; onClicked: keys.forceActiveFocus() }
+
+      Item {
+        id: keys
+        focus: true
+        Keys.onEscapePressed: root.dismiss()
+      }
+
+      // Window buttons, top right: float/tile and minimize (window mode only), close.
+      Row {
+        z: 10
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.margins: Style.space(12)
+        spacing: Style.space(6)
+        Repeater {
+          model: root.appMode
+            ? [["tile", "󰕰", "Tile / float"], ["minimize", "󰖰", "Minimize to the bar"], ["close", "󰅖", "Close"]]
+            : [["close", "󰅖", "Close"]]
+          Rectangle {
+            id: winBtn
+            required property var modelData
+            readonly property bool isClose: modelData[0] === "close"
+            width: Style.space(32)
+            height: width
+            radius: width / 2
+            color: winBtnArea.containsMouse ? Util.alpha(isClose ? Commons.Color.urgent : root.accent, 0.25) : Qt.rgba(1, 1, 1, 0.06)
+            Text {
+              anchors.centerIn: parent
+              text: winBtn.modelData[1]
+              color: winBtnArea.containsMouse ? (winBtn.isClose ? Commons.Color.urgent : root.accent) : root.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.body
+            }
+            MouseArea {
+              id: winBtnArea
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: winBtn.isClose ? root.dismiss() : root.windowAction(winBtn.modelData[0])
+            }
+          }
+        }
+      }
 
       // Sidebar: Home, then the groups of pages.
       Rectangle {
@@ -686,7 +730,7 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     text: navItem.modelData.icon || ""
                     color: navItem.current ? root.accent : root.foreground
-                    font.family: Style.font.family
+                    font.family: root.glyphFont(navItem.modelData.icon)
                     font.pixelSize: Style.font.body
                   }
                   Text {
@@ -746,7 +790,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.navPage.icon || ""
                 color: root.accent
-                font.family: Style.font.family
+                font.family: root.glyphFont(root.navPage.icon)
                 font.pixelSize: Style.font.title
               }
               Text {
@@ -925,8 +969,8 @@ Item {
                 anchors.left: parent.left
                 anchors.leftMargin: Style.space(10)
                 anchors.verticalCenter: parent.verticalCenter
-                Text { text: "Icon colour"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body }
-                Text { text: "Accent recolours everything; apps use their symbolic icon, a glyph or a badge"; color: root.foreground; opacity: 0.5
+                Text { text: "Icon color"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.body }
+                Text { text: "Accent recolors everything; apps use their symbolic icon, a glyph or a badge"; color: root.foreground; opacity: 0.5
                   font.family: root.fontFamily; font.pixelSize: Style.font.caption }
               }
               Row {

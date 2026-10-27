@@ -1805,7 +1805,7 @@ Item {
   // the left island; the middle island sits between the center and right.
   // Each can be switched off in Desktop settings → Bar (daa-ui.json).
   readonly property var logoEntries: uiOpt("barLogo", true) ? [{ id: "daa.desktop-shortcuts" }] : []
-  readonly property var appEntries: uiOpt("barAppName", true) ? [{ id: "daa.desktop-app-name" }] : []
+  readonly property var appEntries: (uiOpt("barAppName", true) ? [{ id: "daa.desktop-app-name" }] : []).concat([{ id: "daa.desktop-minimized" }])
   readonly property var middleEntries: uiOpt("barMedia", true) ? [{ id: "daa.desktop-media" }] : []
 
   property var ui: ({})

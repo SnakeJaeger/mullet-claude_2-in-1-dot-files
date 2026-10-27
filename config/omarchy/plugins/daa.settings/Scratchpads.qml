@@ -152,6 +152,52 @@ Column {
     if (page.host) page.host.dismiss()
     Quickshell.execDetached(["bash", "-c", "sleep 0.3; omarchy-shell shell summon daa.zap '{\"mode\":\"pick\"}'"])
   }
+  // Or choose from the installed apps (their .desktop entries), without
+  // leaving settings: the class comes from StartupWMClass, else the entry id.
+  property bool installedOpen: false
+  property string installedQuery: ""
+  readonly property var installedApps: {
+    var q = page.installedQuery.trim().toLowerCase()
+    var apps = DesktopEntries.applications.values || []
+    var out = []
+    var seen = {}
+    for (var i = 0; i < apps.length; i++) {
+      var a = apps[i]
+      if (!a || a.noDisplay || seen[a.id]) continue
+      if (q && (String(a.name) + " " + a.id + " " + (a.genericName || "")).toLowerCase().indexOf(q) === -1) continue
+      seen[a.id] = true
+      out.push(a)
+    }
+    out.sort(function(x, y) {
+      // Names that start with the query first, then alphabetical.
+      var xs = q && String(x.name).toLowerCase().indexOf(q) === 0 ? 0 : 1
+      var ys = q && String(y.name).toLowerCase().indexOf(q) === 0 ? 0 : 1
+      return xs - ys || String(x.name).localeCompare(String(y.name))
+    })
+    return out
+  }
+  function appIcon(value) {
+    if (value && String(value).charAt(0) === "/") return "file://" + value
+    var themed = value ? Quickshell.iconPath(value, true) : ""
+    return themed.length > 0 ? themed : Quickshell.iconPath("application-x-executable", true)
+  }
+  function useInstalled(a) {
+    if (!page.editing) page.startNew()
+    var f = {}
+    for (var k in page.form) f[k] = page.form[k]
+    var cmd = String(a.execString || "").replace(/\s+%[fFuUdDnNickvm]/g, "").trim()
+    f.cmd = page.cleanCmd(cmd)
+    f.terminal = !!a.runInTerminal
+    f.match = f.terminal ? "" : String(a.startupClass || String(a.id).replace(/\.desktop$/, ""))
+    f.label = String(a.name)
+    f.name = page.slug(a.name)
+    page.form = f
+    page.installedOpen = false
+    page.installedQuery = ""
+    page.status = "Chose " + a.name + (f.terminal ? " (runs in a terminal)." : " (class " + f.match + "). If Test doesn't catch its window, use Detect.")
+    page.guide()
+  }
+
   // Called by Settings.qml when the zap picker hands a window back.
   FileView {
     id: pickedFile
@@ -355,8 +401,124 @@ Column {
     Row {
       x: Style.space(10)
       spacing: Style.space(6)
+      SmallButton {
+        label: "󰀻  Select from installed  " + (page.installedOpen ? "▴" : "▾")
+        primary: page.installedOpen
+        onClicked: {
+          page.installedOpen = !page.installedOpen
+          if (page.installedOpen) Qt.callLater(function() { installedInput.forceActiveFocus() })
+        }
+      }
       SmallButton { label: "󰆾  Pick a window"; onClicked: page.pick() }
       SmallButton { label: "Detect from command"; onClicked: page.detect() }
+    }
+    // The installed-apps list: type to narrow it, Enter takes the first.
+    Rectangle {
+      visible: page.installedOpen
+      x: Style.space(10)
+      width: page.width - Style.space(20)
+      height: Style.space(330)
+      radius: Style.space(10)
+      color: Qt.rgba(1, 1, 1, 0.04)
+      border.width: 1
+      border.color: Util.alpha(page.accent, 0.35)
+      clip: true
+
+      Rectangle {
+        id: installedSearch
+        x: Style.space(8); y: Style.space(8)
+        width: parent.width - Style.space(16)
+        height: Style.space(32)
+        radius: Style.space(8)
+        color: Qt.rgba(1, 1, 1, 0.06)
+        Text {
+          id: searchGlyph
+          anchors.left: parent.left; anchors.leftMargin: Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          text: "󰍉"
+          color: page.accent
+          font.family: page.font
+          font.pixelSize: Style.font.bodySmall
+        }
+        TextInput {
+          id: installedInput
+          anchors.left: searchGlyph.right; anchors.leftMargin: Style.space(8)
+          anchors.right: parent.right; anchors.rightMargin: Style.space(10)
+          anchors.top: parent.top; anchors.bottom: parent.bottom
+          verticalAlignment: TextInput.AlignVCenter
+          clip: true
+          text: page.installedQuery
+          color: page.fg
+          font.family: page.font
+          font.pixelSize: Style.font.bodySmall
+          onTextEdited: { page.installedQuery = text; installedList.positionViewAtBeginning() }
+          Keys.onEscapePressed: { if (page.installedQuery !== "") page.installedQuery = ""; else page.installedOpen = false }
+          Keys.onReturnPressed: if (page.installedApps.length) page.useInstalled(page.installedApps[0])
+          Keys.onDownPressed: installedList.flick(0, -1200)
+          Keys.onUpPressed: installedList.flick(0, 1200)
+          Text { visible: installedInput.text === ""; text: "Type to find an app…"; color: page.fg; opacity: 0.4; font: installedInput.font }
+        }
+      }
+      ListView {
+        id: installedList
+        anchors.top: installedSearch.bottom; anchors.topMargin: Style.space(6)
+        anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+        anchors.margins: Style.space(4)
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        model: page.installedApps
+        delegate: Rectangle {
+          id: appRow
+          required property var modelData
+          required property int index
+          width: installedList.width
+          height: Style.space(34)
+          radius: Style.space(7)
+          color: rowArea.containsMouse ? Util.alpha(page.accent, 0.18)
+            : index === 0 && page.installedQuery !== "" ? Util.alpha(page.accent, 0.08) : "transparent"
+          Image {
+            id: rowIcon
+            x: Style.space(8)
+            anchors.verticalCenter: parent.verticalCenter
+            width: Style.space(22); height: width
+            sourceSize.width: width * 2; sourceSize.height: height * 2
+            source: page.appIcon(appRow.modelData.icon)
+            asynchronous: true
+            fillMode: Image.PreserveAspectFit
+          }
+          Text {
+            id: rowName
+            anchors.left: rowIcon.right; anchors.leftMargin: Style.space(10)
+            anchors.verticalCenter: parent.verticalCenter
+            width: Math.min(implicitWidth, parent.width * 0.6)
+            elide: Text.ElideRight
+            text: appRow.modelData.name
+            color: page.fg
+            font.family: page.font
+            font.pixelSize: Style.font.bodySmall
+          }
+          Text {
+            anchors.left: rowName.right; anchors.leftMargin: Style.space(10)
+            anchors.right: parent.right; anchors.rightMargin: Style.space(10)
+            anchors.verticalCenter: parent.verticalCenter
+            elide: Text.ElideRight
+            text: appRow.modelData.genericName || ""
+            color: page.fg
+            opacity: 0.45
+            font.family: page.font
+            font.pixelSize: Style.font.caption
+          }
+          MouseArea { id: rowArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: page.useInstalled(appRow.modelData) }
+        }
+        Text {
+          visible: installedList.count === 0
+          anchors.centerIn: parent
+          text: "No app matches \"" + page.installedQuery + "\""
+          color: page.fg; opacity: 0.5
+          font.family: page.font
+          font.pixelSize: Style.font.bodySmall
+        }
+      }
     }
     Field { label: "Command"; hint: "what launches it, e.g. gnome-calculator"; value: page.form.cmd; onEdited: function(v) { page.setField("cmd", v) } }
     Field { label: "Window class"; hint: "filled by Pick / Detect"; value: page.form.match; onEdited: function(v) { page.setField("match", v) } }

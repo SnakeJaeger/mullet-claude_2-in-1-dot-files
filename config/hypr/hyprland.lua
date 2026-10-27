@@ -40,6 +40,10 @@ require("default.hypr.toggles")
 -- wdisplays (left click on the bar's monitor icon): float it centred.
 o.window("^network\\.cycles\\.wdisplays$", { tag = "+floating-window" })
 
+-- Desktop settings in window mode (daa.settings): opens floating and centred,
+-- its own size; its tile button tiles it.
+o.window({ class = "^org\\.quickshell$", title = "^Desktop settings$" }, { float = true, center = true, size = { 960, 720 } })
+
 -- Window rules made in Desktop settings → Rules (windowrules_user.json).
 do
   local ok, rules = pcall(dofile, (os.getenv("HOME") or "") .. "/.config/hypr/windowrules_user.lua")

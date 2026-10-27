@@ -1,0 +1,34 @@
+#!/bin/bash
+# Minimize windows to the bar: they park on special:minimized, and the bar's
+# daa.desktop-minimized chip lists them (click one to bring it back).
+#   minimize                    the focused window
+#   minimize ADDRESS            that window
+#   minimize --class CLASS      the first window of that class
+#   minimize --title TITLE      the first window with that exact title
+#   minimize restore ADDRESS    back onto the current workspace, focused
+#   minimize restore --title T  the same, found by title
+
+find_addr() {
+  case $1 in
+    --class) hyprctl clients -j | jq -r --arg v "$2" 'first(.[] | select(.class == $v) | .address) // empty' ;;
+    --title) hyprctl clients -j | jq -r --arg v "$2" 'first(.[] | select(.title == $v) | .address) // empty' ;;
+    "") hyprctl activewindow -j | jq -r '.address // empty' ;;
+    *) echo "$1" ;;
+  esac
+}
+
+if [[ $1 == restore ]]; then
+  shift
+  addr=$(find_addr "$@")
+  [[ -z $addr ]] && exit 1
+  ws=$(hyprctl activeworkspace -j | jq -r '.id')
+  # Hidden specials are no_focus (hypr/scratchpads.lua); clear it on the way out.
+  hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"no_focus\", value = \"0\", window = \"address:$addr\" })" >/dev/null
+  hyprctl dispatch "hl.dsp.window.move({ window = \"address:$addr\", workspace = \"$ws\", follow = false })" >/dev/null
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:$addr\" })" >/dev/null
+  exit 0
+fi
+
+addr=$(find_addr "$@")
+[[ -z $addr ]] && exit 1
+hyprctl dispatch "hl.dsp.window.move({ window = \"address:$addr\", workspace = \"special:minimized\", follow = false })" >/dev/null
