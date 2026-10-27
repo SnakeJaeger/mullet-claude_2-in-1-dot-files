@@ -10,6 +10,35 @@ BarWidget {
   id: root
   moduleName: "omarchy.workspaces"
 
+  // Desktop UI settings (daa.settings writes ~/.config/omarchy/daa-ui.json;
+  // a missing key means its default, i.e. on).
+  property var ui: ({})
+  function uiOpt(key, fallback) {
+    // Calm mode (power-saver; daa.settings writes ~/.local/state/daa/calm):
+    // the decorative animations pause, whatever their own switches say.
+    if (root.calm && root.calmKeys.indexOf(key) !== -1) return false
+    var v = root.ui ? root.ui[key] : undefined; return v === undefined || v === null ? fallback : v
+  }
+  readonly property var calmKeys: ["goMenuAnimations", "duel", "launcherTrails", "shortcutCardAnimations",
+    "shortcutCardTrails", "workspaceSpring", "magellanic", "breathingBorders", "barAlertPulse"]
+  property bool calm: false
+  FileView {
+    path: Quickshell.env("HOME") + "/.local/state/daa/calm"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.calm = String(text()).trim() === "1"
+    onLoadFailed: root.calm = false
+  }
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/daa-ui.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { root.ui = JSON.parse(text() || "{}") } catch (e) {} }
+    onLoadFailed: root.ui = ({})   // file deleted: all defaults
+  }
+
   function workspaceById(id) {
     var values = Hyprland.workspaces.values
     for (var i = 0; i < values.length; i++) {
@@ -20,7 +49,10 @@ BarWidget {
   }
 
   function workspaceIds() {
-    var ids = [1, 2, 3, 4, 5]
+    // Settings: "visibleWorkspaces" (2-10) always shown; others when in use.
+    var shown = Math.max(1, Math.min(10, Math.round(root.uiOpt("visibleWorkspaces", 5))))
+    var ids = []
+    for (var n = 1; n <= shown; n++) ids.push(n)
     var values = Hyprland.workspaces.values
 
     for (var i = 0; i < values.length; i++) {
@@ -75,6 +107,8 @@ BarWidget {
   property real recentAt: 0
 
   function lap() {
+    // Settings: "magellanic" off = a plain switch.
+    if (!root.uiOpt("magellanic", true)) return
     if (lapOverlay.running) return
     if (Date.now() - root.recentAt < 500) {
       switchAnimation.stop()
@@ -185,6 +219,13 @@ BarWidget {
       root.recentRight = movingRight
       root.recentAt = Date.now()
 
+      // Settings: "workspaceSpring" off = the indicator jumps straight there.
+      if (!root.uiOpt("workspaceSpring", true)) {
+        leftEdge = targetLeft
+        rightEdge = targetRight
+        return
+      }
+
       var squeeze = (rightEdge - leftEdge) * 0.4
       squeezeLeft = movingRight ? leftEdge + squeeze : leftEdge
       squeezeRight = movingRight ? rightEdge : rightEdge - squeeze
@@ -280,7 +321,8 @@ BarWidget {
       lapRun.stop()
       p = 0
       running = true
-      lapRun.duration = Math.round(650 + total * 0.22)
+      // Settings: "magellanicSpeed" multiplier.
+      lapRun.duration = Math.round((650 + total * 0.22) / Math.max(0.1, root.uiOpt("magellanicSpeed", 1)))
       lapRun.start()
     }
 

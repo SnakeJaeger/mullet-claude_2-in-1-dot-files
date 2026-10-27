@@ -14,6 +14,12 @@ if [[ $to != *,* ]]; then
   exec omarchy-shell -q "$target" open
 fi
 
+# Settings (daa.settings): "cursorGlide": false jumps straight there.
+if [[ $(jq -r 'if .cursorGlide == false then "false" else "true" end' "$HOME/.config/omarchy/daa-ui.json" 2>/dev/null) == false ]]; then
+  hyprctl dispatch "hl.dsp.cursor.move({ x = ${to%,*}, y = ${to#*,} })" >/dev/null
+  exec omarchy-shell -q "$target" open
+fi
+
 hyprctl eval "
 local p = hl.get_cursor_pos()
 local fx, fy, tx, ty = p.x, p.y, ${to%,*}, ${to#*,}

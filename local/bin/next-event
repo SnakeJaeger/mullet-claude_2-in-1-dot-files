@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+# Next calendar event in the coming 24 h, from Evolution Data Server (the
+# store GNOME Calendar / the Nextcloud CalDAV account sync into), as one JSON
+# line: {"summary", "start" (unix s), "calendar", "all_day"} or {} if none.
+# Used by the info bar (daa.infobar).
+import json, time
+import gi
+gi.require_version("ECal", "2.0")
+gi.require_version("EDataServer", "1.2")
+from gi.repository import ECal, EDataServer
+
+SKIP = {"Birthdays & Anniversaries", "Contact birthdays"}
+now = int(time.time())
+until = now + 24 * 3600
+best = None
+
+reg = EDataServer.SourceRegistry.new_sync(None)
+for source in reg.list_sources(EDataServer.SOURCE_EXTENSION_CALENDAR):
+    if not source.get_enabled() or source.get_display_name() in SKIP:
+        continue
+    try:
+        client = ECal.Client.connect_sync(source, ECal.ClientSourceType.EVENTS, 2, None)
+    except Exception:
+        continue
+    found = []
+
+    def take(comp, start, end, *_):
+        try:
+            ts = start.as_timet_with_zone(start.get_timezone()) if start.get_timezone() else start.as_timet()
+            found.append((ts, comp.get_summary() or "(no title)", start.is_date()))
+        except Exception:
+            pass
+        return True
+
+    try:
+        client.generate_instances_sync(now - 3600, until, None, take)
+    except Exception:
+        continue
+    for ts, summary, all_day in found:
+        # Still-running events count until they've started an hour ago.
+        if ts + (0 if all_day else 3600) < now:
+            continue
+        if best is None or ts < best["start"]:
+            best = {"summary": summary, "start": int(ts), "calendar": source.get_display_name(), "all_day": bool(all_day)}
+
+print(json.dumps(best or {}))

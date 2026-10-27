@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "daa.powerbar",
+  "name": "Power bar",
+  "version": "1.0.0",
+  "author": "daa",
+  "description": "SUPER + ESC: a band across the middle of the dimmed screen with the power options",
+  "kinds": [
+    "menu"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "PowerBar.qml"
+  }
+}

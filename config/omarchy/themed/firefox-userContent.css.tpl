@@ -26,3 +26,6 @@
   }
   body { background-color: {{ background }} !important; }
 }
+
+/* Text selection highlight on every page: theme coral. */
+::selection { background-color: {{ red }} !important; color: {{ darker_background }} !important; }

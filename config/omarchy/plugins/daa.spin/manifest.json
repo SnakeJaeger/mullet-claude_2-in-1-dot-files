@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "daa.spin",
+  "name": "Spin",
+  "version": "1.0.0",
+  "author": "daa",
+  "description": "A little something for tablets that go all the way round",
+  "kinds": [
+    "menu"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "Spin.qml"
+  }
+}

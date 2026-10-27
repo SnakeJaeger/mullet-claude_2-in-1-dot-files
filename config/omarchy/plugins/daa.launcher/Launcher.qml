@@ -14,6 +14,55 @@ import qs.Ui
 Item {
   id: root
 
+  // The theme's extra colours (green, magenta, yellow, orange, cyan, blue)
+  // for multi-coloured effects, re-read when the theme changes.
+  property var themePalette: ["#9ece6a", "#bb9af7", "#e0af68", "#ff9e64", "#73daca", "#7aa2f7"]
+  FileView {
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme/colors.toml"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      var t = String(text())
+      var out = []
+      var keys = ["green", "magenta", "yellow", "orange", "cyan", "blue"]
+      for (var i = 0; i < keys.length; i++) {
+        var m = t.match(new RegExp("^\\s*" + keys[i] + "\\s*=\\s*[\"']?(#[0-9a-fA-F]{6})", "m"))
+        if (m) out.push(m[1])
+      }
+      if (out.length) root.themePalette = out
+    }
+  }
+
+  // Desktop UI settings (daa.settings writes ~/.config/omarchy/daa-ui.json;
+  // a missing key means its default, i.e. on).
+  property var ui: ({})
+  function uiOpt(key, fallback) {
+    // Calm mode (power-saver; daa.settings writes ~/.local/state/daa/calm):
+    // the decorative animations pause, whatever their own switches say.
+    if (root.calm && root.calmKeys.indexOf(key) !== -1) return false
+    var v = root.ui ? root.ui[key] : undefined; return v === undefined || v === null ? fallback : v
+  }
+  readonly property var calmKeys: ["goMenuAnimations", "duel", "launcherTrails", "shortcutCardAnimations",
+    "shortcutCardTrails", "workspaceSpring", "magellanic", "breathingBorders", "barAlertPulse"]
+  property bool calm: false
+  FileView {
+    path: Quickshell.env("HOME") + "/.local/state/daa/calm"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.calm = String(text()).trim() === "1"
+    onLoadFailed: root.calm = false
+  }
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/daa-ui.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { root.ui = JSON.parse(text() || "{}") } catch (e) {} }
+    onLoadFailed: root.ui = ({})   // file deleted: all defaults
+  }
+
   property var shell: null
   property var manifest: null
   readonly property var appLibrary: root.shell ? root.shell.appLibrary : null
@@ -115,7 +164,14 @@ Item {
   property int cellWidth: Math.round((headerHeight + contentSpacing + rows * cellHeight) / columns)
   property int cellHeight: iconSize + Style.font.body * 2 + Style.space(22)
 
+  // Easter egg (SUPER + ALT + R, payload {"mullet":true}): Mullet Claude
+  // watches over the apps from behind the grid.
+  property bool mullet: false
+
   function open(payloadJson) {
+    var payload = {}
+    try { payload = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
+    root.mullet = payload.mullet === true
     root.opened = true
     root.filterText = ""
     root.category = ""
@@ -375,6 +431,42 @@ Item {
 
       MouseArea { anchors.fill: parent; onClicked: {} }
 
+      // Clipped just inside the logo frame, so the sketch never spills past it.
+      Item {
+        id: mulletClip
+        visible: root.mullet
+        anchors.fill: parent
+        anchors.margins: Style.space(30)
+        clip: true
+
+        Image {
+          id: mulletPic
+          anchors.centerIn: parent
+          // Up and toward the left, so Mullet Claude sits behind the first columns.
+          anchors.horizontalCenterOffset: -parent.width * 0.12
+          anchors.verticalCenterOffset: -parent.height * 0.1
+          width: parent.width * 1.1
+          height: parent.height * 1.1
+          source: Qt.resolvedUrl("mullet.png")
+          // The sketch from the social preview, zoomed in on Mullet Claude with
+          // the paper made transparent: just the pencil strokes.
+          sourceSize.width: 800
+          fillMode: Image.PreserveAspectCrop
+          smooth: true
+          opacity: 0
+          // Fades up behind the apps, then breathes slowly.
+          SequentialAnimation {
+            running: root.opened && root.mullet
+            NumberAnimation { target: mulletPic; property: "opacity"; from: 0; to: 0.55; duration: 600; easing.type: Easing.OutCubic }
+            SequentialAnimation {
+              loops: Animation.Infinite
+              NumberAnimation { target: mulletPic; property: "scale"; from: 1; to: 1.03; duration: 2400; easing.type: Easing.InOutSine }
+              NumberAnimation { target: mulletPic; property: "scale"; from: 1.03; to: 1; duration: 2400; easing.type: Easing.InOutSine }
+            }
+          }
+        }
+      }
+
       // A soft Tokyo Night blue haze in the middle, fading out well before the
       // frame, so the window looks lit from within behind the apps.
       Canvas {
@@ -470,15 +562,17 @@ Item {
         anchors.fill: logoFrame
         property real t: 0
         readonly property color cyan: Commons.Color.pick("tablet.accent", Commons.Color.accent)
-        readonly property color coral: "#f7768e"
+        readonly property color coral: Commons.Color.urgent
         // One trail at a time wears a special colour, starting with lime;
         // when it finishes the next trail to fire takes the next one.
-        readonly property var specials: ["#9ece6a", "#bb9af7", "#e0af68", "#ff9e64", "#73daca", "#7aa2f7"]
+        readonly property var specials: root.themePalette
         property var special: null      // { n, run, color }
         property int specialNext: 0
+        // Settings: "launcherTrails" on/off, "launcherTrailSpeed" multiplier.
+        visible: root.uiOpt("launcherTrails", true)
         FrameAnimation {
           running: root.opened && logoComets.visible
-          onTriggered: { logoComets.t += frameTime; logoComets.requestPaint() }
+          onTriggered: { logoComets.t += frameTime * root.uiOpt("launcherTrailSpeed", 1); logoComets.requestPaint() }
         }
 
         // The outer or inner ring as a rectangle on the lines' centres.

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "daa.tablet-greeter",
+  "name": "Tablet Greeter",
+  "version": "1.0.0",
+  "author": "daa",
+  "description": "Greets tablet mode with big Windows Phone style tiles for what you came to do: watch, read, draw, play",
+  "kinds": [
+    "menu"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "Greeter.qml"
+  }
+}

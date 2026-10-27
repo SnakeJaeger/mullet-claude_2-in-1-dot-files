@@ -93,12 +93,23 @@ Item {
 
   // How many notifications the history directory keeps, and therefore how
   // many `showHistory` can replay.
-  readonly property int historyLimit: 50
+  // Desktop settings (daa.settings, ~/.config/omarchy/daa-ui.json):
+  // "notificationHistory" and "notificationSeconds".
+  property var ui: ({})
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/daa-ui.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { service.ui = JSON.parse(text() || "{}") } catch (e) {} }
+    onLoadFailed: service.ui = ({})
+  }
+  readonly property int historyLimit: Math.max(5, Math.round(service.ui.notificationHistory || 50))
 
   // daa: every toast stays up for 10 s (hover still pauses it) unless it's
   // dismissed with its close button or a right click. Critical ones still
   // stay until dismissed.
-  readonly property int popupDuration: 10000
+  readonly property int popupDuration: Math.max(2, Math.round(service.ui.notificationSeconds || 10)) * 1000
 
   function durationFor(urgency, expireTimeout) {
     return urgency === NotificationUrgency.Critical ? 0 : popupDuration
@@ -147,6 +158,21 @@ Item {
     return transient || NotificationLogic.isEphemeralApp(String(notification.appName || ""))
   }
 
+  // quietHours / quietFrom / quietTo (whole hours; may wrap past midnight)
+  // and mutedApps (app names, lower case) from daa-ui.json.
+  function inQuietHours() {
+    if (service.ui.quietHours !== true) return false
+    var from = Number(service.ui.quietFrom === undefined ? 22 : service.ui.quietFrom)
+    var to = Number(service.ui.quietTo === undefined ? 7 : service.ui.quietTo)
+    var h = new Date().getHours()
+    return from === to ? false : from < to ? h >= from && h < to : h >= from || h < to
+  }
+  function isMutedApp(notification) {
+    var muted = service.ui.mutedApps
+    if (!Array.isArray(muted) || muted.length === 0) return false
+    return muted.indexOf(String(notification.appName || "").toLowerCase()) !== -1
+  }
+
   function handleNotification(notification) {
     // Without `tracked = true` the Notification object is destroyed as soon
     // as this signal handler returns, which would null out the `ref` we just
@@ -164,7 +190,9 @@ Item {
     // DND bypass rules: chat apps abuse urgency=critical to force
     // visibility, so critical alone isn't enough — we also require the
     // sender to be CLI-style. See shouldBypassDnd().
-    if (service.doNotDisturb && !shouldBypassDnd(notification)) {
+    // Desktop settings → Notifications: quiet hours act like DND, and a
+    // muted app always goes straight to history.
+    if ((service.doNotDisturb || service.inQuietHours()) && !shouldBypassDnd(notification) || service.isMutedApp(notification)) {
       // The toast never shows, so the only record a silenced notification
       // can leave is a history entry. Write it straight into history —
       // "what did I miss while silenced" is exactly what history is for.

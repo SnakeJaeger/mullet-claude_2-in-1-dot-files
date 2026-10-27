@@ -79,14 +79,22 @@ Item {
         font.pixelSize: Style.font.body
       }
 
+      // The Lab API's one-line summary ("all up · GPU 0% · / 33% · backup ok
+      // 13:50") when it answers, else the count of services up.
       Text {
+        readonly property string summary: card.status && card.status.summary
+          ? String(card.status.summary).replace(/^all up · /, "").replace("backup ok ", "backup ") : ""
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
+        width: Math.min(implicitWidth, parent.width - Style.space(52))
+        horizontalAlignment: Text.AlignRight
+        elide: Text.ElideRight
         text: !card.status ? "checking…"
+          : summary !== "" ? summary
           : card.upCount + " of " + card.total + " up"
-        color: card.foreground
+        color: summary.indexOf("down") === 0 || summary.indexOf("FAILED") !== -1 ? Commons.Color.urgent : card.foreground
         font.family: card.fontFamily
-        font.pixelSize: Style.font.body
+        font.pixelSize: summary !== "" ? Style.font.caption : Style.font.body
       }
     }
 

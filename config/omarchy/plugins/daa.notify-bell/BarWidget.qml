@@ -16,6 +16,35 @@ BarWidget {
   id: root
   moduleName: "daa.notify-bell"
 
+  // Desktop UI settings (daa.settings writes ~/.config/omarchy/daa-ui.json;
+  // a missing key means its default, i.e. on).
+  property var ui: ({})
+  function uiOpt(key, fallback) {
+    // Calm mode (power-saver; daa.settings writes ~/.local/state/daa/calm):
+    // the decorative animations pause, whatever their own switches say.
+    if (root.calm && root.calmKeys.indexOf(key) !== -1) return false
+    var v = root.ui ? root.ui[key] : undefined; return v === undefined || v === null ? fallback : v
+  }
+  readonly property var calmKeys: ["goMenuAnimations", "duel", "launcherTrails", "shortcutCardAnimations",
+    "shortcutCardTrails", "workspaceSpring", "magellanic", "breathingBorders", "barAlertPulse"]
+  property bool calm: false
+  FileView {
+    path: Quickshell.env("HOME") + "/.local/state/daa/calm"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.calm = String(text()).trim() === "1"
+    onLoadFailed: root.calm = false
+  }
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/daa-ui.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { root.ui = JSON.parse(text() || "{}") } catch (e) {} }
+    onLoadFailed: root.ui = ({})   // file deleted: all defaults
+  }
+
   readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/omarchy/notifications"
   readonly property string historyDir: stateDir + "/history"
   readonly property int count: liveFiles.count + historyFiles.count
@@ -50,7 +79,8 @@ BarWidget {
   // Slow pulse once more than 5 are waiting.
   property real pulse: 0
   SequentialAnimation on pulse {
-    running: root.count > 5
+    // Settings: "barAlertPulse" off = steady colour.
+    running: root.count > 5 && root.uiOpt("barAlertPulse", true)
     loops: Animation.Infinite
     NumberAnimation { to: 1; duration: 1100; easing.type: Easing.InOutSine }
     NumberAnimation { to: 0; duration: 1100; easing.type: Easing.InOutSine }

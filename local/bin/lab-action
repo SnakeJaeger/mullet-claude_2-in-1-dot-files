@@ -1,0 +1,42 @@
+#!/bin/bash
+# Lab actions through the lab box's Lab API (address in
+# ~/.config/lab-services/api or $LAB_API). Used by "/lab" in the quick search.
+#   lab-action open <project-id> [web-ui-url]   open a GNS3 project (+ its web UI)
+#   lab-action close <project-id>
+#   lab-action restart <service-id>             restart a service; restarting
+#       gns3 while labs are open asks first: run it again within 30 s to force
+LAB_API=${LAB_API:-$(cat "$HOME/.config/lab-services/api" 2>/dev/null)}
+[[ -n $LAB_API ]] || { notify-send -u normal "Lab" "No Lab API address (~/.config/lab-services/api)."; exit 1; }
+[[ $2 =~ ^[A-Za-z0-9._-]+$ ]] || { echo "bad id" >&2; exit 1; }
+
+post() { curl -s -m 20 -X POST -H 'X-Lab-Client: 1' -w '\n%{http_code}' "$LAB_API$1"; }
+
+case $1 in
+  open)
+    out=$(post "/gns3/projects/$2/open"); code=${out##*$'\n'}
+    if [[ $code == 2* ]]; then
+      notify-send -u low "Lab" "Project opened."
+      [[ -n $3 ]] && uwsm-app -- xdg-open "$3"
+    else
+      notify-send -u normal "Lab" "Couldn't open the project (HTTP $code)."
+    fi ;;
+  close)
+    out=$(post "/gns3/projects/$2/close"); code=${out##*$'\n'}
+    [[ $code == 2* ]] && notify-send -u low "Lab" "Project closed." || notify-send -u normal "Lab" "Couldn't close it (HTTP $code)." ;;
+  restart)
+    mark=${XDG_RUNTIME_DIR:-/tmp}/lab-force-$2
+    q=""
+    [[ -e $mark ]] && (( $(date +%s) - $(stat -c %Y "$mark") < 30 )) && q="?force=1"
+    rm -f "$mark"
+    out=$(post "/services/$2/restart$q"); code=${out##*$'\n'}; body=${out%$'\n'*}
+    if [[ $code == 409 ]]; then
+      touch "$mark"
+      open=$(jq -r '.opened // [] | join(", ")' <<<"$body" 2>/dev/null)
+      notify-send -u normal "Lab: labs are running" "Open: ${open:-?}. Run the restart again within 30 s to force it."
+    elif [[ $code == 2* ]]; then
+      notify-send -u low "Lab" "Restarted $2 ($(jq -r '.state // "?"' <<<"$body" 2>/dev/null))."
+    else
+      notify-send -u normal "Lab" "Restart of $2 failed (HTTP $code)."
+    fi ;;
+  *) echo "usage: lab-action open|close|restart <id> [url]" >&2; exit 1 ;;
+esac

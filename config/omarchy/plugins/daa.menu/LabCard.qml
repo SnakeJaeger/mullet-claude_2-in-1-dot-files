@@ -32,6 +32,7 @@ Item {
   function record(json) {
     var next
     try { next = JSON.parse(json) } catch (e) { return }
+    var wasKnown = card.status !== null, wasUp = card.labUp
     var list = card.samples.slice()
     list.push(next.lab)
     if (list.length > 30) list.shift()
@@ -39,6 +40,11 @@ Item {
     // Ping-only samples refresh the latency but keep the last full status.
     var merged = Object.assign({}, card.status || {}, next)
     card.status = merged
+    if (!card.active) return
+    // Comets: one runs the heartbeat line with each reply; the lab going
+    // down or coming back sends two round the card.
+    if (next.lab !== null && next.lab !== undefined) spark.pulse = 0
+    if (wasKnown && wasUp !== card.labUp) lap.start()
   }
 
   Process {
@@ -119,6 +125,16 @@ Item {
         anchors.fill: parent
         property var points: card.samples
         property color line: card.accent
+        // Heartbeat comet: 0..1 along the line (left to the newest reply), -1 = none.
+        property real pulse: -1
+        FrameAnimation {
+          running: spark.pulse >= 0
+          onTriggered: {
+            spark.pulse += frameTime / 0.85
+            if (spark.pulse > 1.25) spark.pulse = -1
+            spark.requestPaint()
+          }
+        }
         onPointsChanged: requestPaint()
         onLineChanged: requestPaint()
         onWidthChanged: requestPaint()
@@ -155,6 +171,35 @@ Item {
             drawing = true
           }
           ctx.stroke()
+
+          if (pulse < 0) return
+          // The comet: along the replies' points, white head, accent tail.
+          var poly = []
+          for (var m = 0; m < pts.length; m++)
+            if (pts[m] !== null) poly.push({ x: x0 + m * step, y: bottom - (pts[m] / max) * (bottom - top) })
+          if (poly.length < 2) return
+          var lens = [0]
+          for (var q = 1; q < poly.length; q++) lens.push(lens[q - 1] + Math.hypot(poly[q].x - poly[q - 1].x, poly[q].y - poly[q - 1].y))
+          var total = lens[lens.length - 1]
+          function pointAt(d) {
+            d = Math.max(0, Math.min(total, d))
+            for (var z = 1; z < poly.length; z++) if (lens[z] >= d) {
+              var f = (d - lens[z - 1]) / Math.max(0.001, lens[z] - lens[z - 1])
+              return { x: poly[z - 1].x + (poly[z].x - poly[z - 1].x) * f, y: poly[z - 1].y + (poly[z].y - poly[z - 1].y) * f }
+            }
+            return poly[poly.length - 1]
+          }
+          var k = Math.min(1, pulse), ease = 1 - Math.pow(1 - k, 2)
+          var head = ease * total, trail = Math.min(head, total * 0.3), steps = 18
+          var fade = pulse <= 1 ? 1 : Math.max(0, 1 - (pulse - 1) / 0.25)
+          ctx.lineCap = "round"
+          for (var a = 0; a < steps; a++) {
+            var p0 = pointAt(head - trail * a / steps), p1 = pointAt(head - trail * (a + 1) / steps)
+            var al = fade * Math.pow(1 - a / steps, 1.5)
+            ctx.strokeStyle = a < 2 ? Qt.rgba(1, 1, 1, al) : Qt.rgba(line.r, line.g, line.b, al)
+            ctx.lineWidth = 3 * (1 - a / steps) + 1
+            ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke()
+          }
         }
       }
 
@@ -203,6 +248,68 @@ Item {
       opacity: parent.on ? 1 : 0.58
       font.family: card.fontFamily
       font.pixelSize: Style.font.bodySmall
+    }
+  }
+
+  // Two comets once round the card when the lab goes down (coral) or comes
+  // back (accent).
+  Canvas {
+    id: lap
+    anchors.fill: parent
+    property real t: -1
+    readonly property real dur: 1.4
+    function start() { t = 0; requestPaint() }
+    FrameAnimation {
+      running: lap.t >= 0
+      onTriggered: {
+        lap.t += frameTime
+        if (lap.t > lap.dur + 0.3) lap.t = -1
+        lap.requestPaint()
+      }
+    }
+    // s along the rounded outline, clockwise from the top-left corner's end.
+    function at(s) {
+      var w = width, h = height, r = Math.min(card.radius, w / 2, h / 2)
+      var sw = w - 2 * r, sh = h - 2 * r, arc = Math.PI * r / 2
+      var P = 2 * sw + 2 * sh + 4 * arc
+      s = ((s % P) + P) % P
+      var segs = [
+        function(u) { return { x: r + u, y: 0 } }, sw,
+        function(u) { var a = -Math.PI / 2 + u / Math.max(r, 0.001); return { x: w - r + r * Math.cos(a), y: r + r * Math.sin(a) } }, arc,
+        function(u) { return { x: w, y: r + u } }, sh,
+        function(u) { var a = u / Math.max(r, 0.001); return { x: w - r + r * Math.cos(a), y: h - r + r * Math.sin(a) } }, arc,
+        function(u) { return { x: w - r - u, y: h } }, sw,
+        function(u) { var a = Math.PI / 2 + u / Math.max(r, 0.001); return { x: r + r * Math.cos(a), y: h - r + r * Math.sin(a) } }, arc,
+        function(u) { return { x: 0, y: h - r - u } }, sh,
+        function(u) { var a = Math.PI + u / Math.max(r, 0.001); return { x: r + r * Math.cos(a), y: r + r * Math.sin(a) } }, arc
+      ]
+      for (var i = 0; i < segs.length; i += 2) {
+        if (s <= segs[i + 1]) return segs[i](s)
+        s -= segs[i + 1]
+      }
+      return { x: r, y: 0 }
+    }
+    onPaint: {
+      var ctx = getContext("2d")
+      ctx.reset()
+      if (t < 0) return
+      var r = Math.min(card.radius, width / 2, height / 2)
+      var P = 2 * (width - 2 * r) + 2 * (height - 2 * r) + 2 * Math.PI * r
+      var k = Math.min(1, t / dur), head = (1 - Math.pow(1 - k, 3)) * P
+      var fade = Math.min(1, t / 0.12) * Math.max(0, 1 - Math.max(0, t - dur * 0.7) / (dur * 0.3 + 0.3))
+      var trail = Math.min(head, P * 0.18), steps = 24
+      var col = card.labUp ? card.accent : card.down
+      ctx.lineCap = "round"
+      for (var c = 0; c < 2; c++) {
+        var base = c * P / 2
+        for (var i = 0; i < steps; i++) {
+          var p0 = at(base + head - trail * i / steps), p1 = at(base + head - trail * (i + 1) / steps)
+          var al = fade * Math.pow(1 - i / steps, 1.6)
+          ctx.strokeStyle = i < 2 ? Qt.rgba(1, 1, 1, al) : Qt.rgba(col.r, col.g, col.b, al)
+          ctx.lineWidth = 2.5 * (1 - i / steps) + 0.8
+          ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke()
+        }
+      }
     }
   }
 

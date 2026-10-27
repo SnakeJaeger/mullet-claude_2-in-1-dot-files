@@ -3,7 +3,8 @@ import Quickshell
 import qs.Commons
 import qs.Ui
 
-// Tablet bar button (Omarchy logo): tap opens the quick toggles menu
+// Tablet bar button (tune sliders; the Omarchy logo next to it is the
+// greeter, daa.tablet-greet): tap opens the quick toggles menu
 // (~/.config/omarchy/extensions/omarchy-menu.jsonc). Only the tablet bar
 // (daa.tablet-bar) uses it.
 BarWidget {
@@ -17,8 +18,8 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "\ue900"
-    fontFamily: "omarchy"
+    text: "󰘮"
+    fontFamily: "JetBrainsMono Nerd Font"
     fontSize: Math.round(Style.font.body * 1.2)
     horizontalMargin: 7.5
     tooltipText: "Quick toggles"

@@ -11,3 +11,9 @@ o.launch_on_start("firefox-theme-link")
 -- Never start in brightness boost (raw 4095, see ~/.local/bin/brightness-step):
 -- the kernel restores the last level, so cap it at 100% on login.
 o.launch_on_start([[bash -c '(( $(brightness-step get) > 100 )) && brightness-step set 100 --no-osd']])
+
+-- Login apps added in Desktop settings → Startup (startup_user.json).
+o.launch_on_start("startup-apps")
+
+-- Touchscreen three-finger swipes in laptop mode too (tablet mode adds its edge swipes).
+o.launch_on_start("tablet-mode gestures")

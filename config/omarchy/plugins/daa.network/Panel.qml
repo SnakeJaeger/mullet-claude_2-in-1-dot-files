@@ -1157,6 +1157,29 @@ Panel {
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
 
+          // Rescan for networks now instead of waiting for the next scan.
+          Button {
+            id: refreshAction
+            visible: root.wifiDevice !== null && root.wifiDevice !== undefined
+            iconText: "󰑐"
+            tooltipText: root.scanning ? "Scanning…" : "Refresh networks"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            iconSize: Style.font.subtitle * 1.5
+            horizontalPadding: Style.space(5)
+            verticalPadding: Style.space(2)
+            Layout.alignment: Qt.AlignVCenter
+            rotation: 0
+            RotationAnimation on rotation {
+              running: root.scanning
+              loops: Animation.Infinite
+              from: 0; to: 360
+              duration: 900
+              onRunningChanged: if (!running) refreshAction.rotation = 0
+            }
+            onClicked: root.refresh(true)
+          }
+
           Button {
             id: qrAction
             visible: root.canShareWifi

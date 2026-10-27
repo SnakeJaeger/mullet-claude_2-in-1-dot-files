@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Lab sheet for Desktop settings → Lab (daa.settings/LabPage.qml): the lab
+box's details live in several files the cards and scripts already read; this
+reads them into one sheet and writes changes back to each.
+
+  lab-tool get           JSON {host, vncport, api, sshUser, services:[…]}
+  lab-tool set '<json>'  write back:
+      host + vncport  → server= in the Remmina profile (lab card heartbeat,
+                        server card, Lab button / VNC all read it)
+      host + sshUser  → the "Host lab" block in ~/.ssh/config (ssh lab, /ssh)
+      api             → ~/.config/lab-services/api (server card, /lab)
+      services        → ~/.config/lab-services/services (server card)
+"""
+import json, os, re, sys
+
+HOME = os.path.expanduser("~")
+PROFILE = os.environ.get("LAB_PROFILE", f"{HOME}/.local/share/remmina/lab.remmina")
+API = f"{HOME}/.config/lab-services/api"
+SERVICES = f"{HOME}/.config/lab-services/services"
+SSH = f"{HOME}/.ssh/config"
+FIELDS = ["name", "port", "path", "glyph", "scheme", "page"]
+
+
+def read(path):
+    try:
+        return open(path).read()
+    except OSError:
+        return ""
+
+
+def ssh_block(text):
+    # The block whose Host line names "lab"
+    m = re.search(r"(?ms)^Host\s+[^\n]*\blab\b[^\n]*\n(.*?)(?=^Host\s|\Z)", text)
+    return m
+
+
+def get():
+    server = re.search(r"(?m)^server=(.*)$", read(PROFILE))
+    server = server.group(1).strip() if server else ""
+    host, _, port = server.partition(":")
+    services = []
+    for line in read(SERVICES).splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        services.append({k: (parts[i] if i < len(parts) else "") for i, k in enumerate(FIELDS)})
+    user = ""
+    m = ssh_block(read(SSH))
+    if m:
+        u = re.search(r"(?m)^\s*User\s+(\S+)", m.group(1))
+        user = u.group(1) if u else ""
+    print(json.dumps({"host": host, "vncport": port or "5900", "api": read(API).strip(),
+                      "sshUser": user, "services": services, "profile": os.path.exists(PROFILE)}))
+
+
+def set_(given):
+    d = json.loads(given)
+    host = str(d.get("host", "")).strip()
+    if host and not re.fullmatch(r"[A-Za-z0-9.:_-]+", host):
+        print(json.dumps({"ok": False, "error": "That address has characters a host name can't."}))
+        return
+    done = []
+    if host and os.path.exists(PROFILE):
+        port = str(d.get("vncport") or "5900").strip()
+        text = read(PROFILE)
+        new = re.sub(r"(?m)^server=.*$", f"server={host}:{port}", text)
+        if new != text:
+            open(PROFILE, "w").write(new)
+            done.append("Remmina profile")
+    text = read(SSH)
+    m = ssh_block(text)
+    if m and host:
+        body = m.group(1)
+        nb = re.sub(r"(?m)^(\s*HostName\s+)\S+", lambda x: x.group(1) + host, body)
+        user = str(d.get("sshUser", "")).strip()
+        if user and re.fullmatch(r"[a-z_][a-z0-9_-]*", user):
+            nb = re.sub(r"(?m)^(\s*User\s+)\S+", lambda x: x.group(1) + user, nb)
+        if nb != body:
+            open(SSH, "w").write(text[:m.start(1)] + nb + text[m.end(1):])
+            done.append("ssh config")
+    api = str(d.get("api", "")).strip()
+    if api != read(API).strip():
+        os.makedirs(os.path.dirname(API), exist_ok=True)
+        open(API, "w").write(api + "\n" if api else "")
+        done.append("Lab API")
+    if "services" in d:
+        header = [l for l in read(SERVICES).splitlines() if l.lstrip().startswith("#")]
+        rows = []
+        for s in d["services"]:
+            if not str(s.get("name", "")).strip() or not str(s.get("port", "")).strip().isdigit():
+                continue
+            vals = [str(s.get(k, "")).replace("|", "").strip() for k in FIELDS]
+            while vals and vals[-1] == "":
+                vals.pop()
+            rows.append(" | ".join(vals))
+        text = "\n".join(header + rows) + "\n"
+        if text != read(SERVICES):
+            open(SERVICES, "w").write(text)
+            done.append("services")
+    # The server card caches the tailnet name per host.
+    for p in (f"{HOME}/.cache/server-status-tsname",):
+        if "Remmina profile" in done and os.path.exists(p):
+            os.unlink(p)
+    print(json.dumps({"ok": True, "changed": done}))
+
+
+cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+if cmd == "get":
+    get()
+elif cmd == "set" and len(sys.argv) > 2:
+    set_(sys.argv[2])
+else:
+    print(__doc__)
+    sys.exit(1)

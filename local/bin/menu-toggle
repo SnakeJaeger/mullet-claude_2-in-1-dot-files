@@ -9,11 +9,30 @@
 want="$1"
 shift
 
+# A SUPER press already closed this same menu a moment ago (daa.menu): the
+# key that came with it meant "close", so don't reopen.
+read -r closed closed_at 2>/dev/null < "${XDG_RUNTIME_DIR:-/tmp}/omarchy-menu-superclosed"
+if [[ $closed == "$want" ]] && (( $(date +%s%3N) - ${closed_at:-0} < 1500 )); then
+  exit 0
+fi
+
 current=$(cat "${XDG_RUNTIME_DIR:-/tmp}/omarchy-menu-open" 2>/dev/null)
 if [[ -n $current && $current == "$want" ]] &&
   hyprctl layers -j | jq -e '[.. | objects | select(.namespace? == "omarchy-menu")] | length > 0' >/dev/null; then
   exec omarchy-menu close
 fi
+
+# Opening a menu puts away any other popup that's up (quick search, settings,
+# overview, app grid, power bar…) so the menu isn't stacked on top of it.
+declare -A POPUPS=(
+  [omarchy-search]=daa.search [omarchy-settings]=daa.settings
+  [daa-overview]=daa.overview [omarchy-launcher]="daa.launcher daa.tablet-apps-grid"
+  [omarchy-powerbar]=daa.powerbar [omarchy-zap]=daa.zap
+  [omarchy-clipboard]=omarchy.clipboard [omarchy-image-selector]=omarchy.image-picker
+)
+while read -r ns; do
+  for id in ${POPUPS[$ns]}; do omarchy-shell -q shell hide "$id" & done
+done < <(hyprctl layers -j | jq -r '[.. | objects | .namespace? // empty] | unique[]')
 
 if [[ $want == dmenu:* ]]; then
   exec "$@"

@@ -27,3 +27,21 @@
   // Example: replace the default About action by reusing the same id. Existing
   // fields are kept unless overridden.
   // "about": {"icon":"","label":"About","action":"omarchy-launch-or-focus-tui \"zsh -c 'fastfetch; read -k 1'\""},
+  // Mullet Works: everything built in the Claude sessions on this laptop, in
+  // one place (sits last in the Go menu, where About would be). Easter eggs
+  // stay out of it on purpose.
+  "mullet": {"icon":"󱁤","label":"Mullet Works","description":"Everything Claude built here: hub, tools, builders"},
+  "mullet.hub": {"icon":"󰒓","label":"Settings hub","description":"Search and change every setting (SUPER + CTRL + ALT + S)","action":"sleep 0.2; omarchy-shell shell toggle daa.settings"},
+  "mullet.search": {"icon":"󰍉","label":"Quick search","description":"Tap SUPER: apps, /commands, calculator, subnets","action":"sleep 0.2; omarchy-shell shell toggle daa.search"},
+  "mullet.power": {"icon":"󰐥","label":"Power bar","description":"SUPER + ESC","action":"sleep 0.2; omarchy-shell shell toggle daa.powerbar"},
+  "mullet.zap": {"icon":"󰚌","label":"Zap an app","description":"SUPER + SHIFT + Q: click a window to end its whole program","action":"sleep 0.2; omarchy-shell shell summon daa.zap '{}'"},
+  "mullet.focus": {"icon":"󰽥","label":"Focus mode","description":"SUPER + CTRL + ALT + F: hide the bar, mute, dim the rest","action":"~/.local/bin/focus-mode"},
+  "mullet.dropdowns": {"icon":"󰘔","label":"Dropdown builder","description":"Turn any app into a SUPER-key dropdown","action":"sleep 0.2; omarchy-shell shell summon daa.settings '{\"page\":\"scratchpads\"}'"},
+  "mullet.rules": {"icon":"󰖲","label":"Window rules","description":"Opacity, floating size, always on top, workspace","action":"sleep 0.2; omarchy-shell shell summon daa.settings '{\"page\":\"rules\"}'"},
+  "mullet.keys": {"icon":"󰌌","label":"Keyboard shortcuts","description":"Rebind anything, with clash warnings","action":"sleep 0.2; omarchy-shell shell summon daa.settings '{\"page\":\"keys\"}'"},
+  "mullet.devices": {"icon":"󰒓","label":"Device settings","description":"Panels and settings apps, by category","action":"sleep 0.2; omarchy-shell shell summon daa.settings '{\"page\":\"devices\"}'"},
+  "mullet.lab": {"icon":"󰒋","label":"Lab sheet","description":"Lab address, services, Lab API","action":"sleep 0.2; omarchy-shell shell summon daa.settings '{\"page\":\"lab\"}'"},
+  "mullet.backups": {"icon":"󰁯","label":"Checkpoints","description":"Save or restore the whole setup","action":"sleep 0.2; omarchy-shell shell summon daa.settings '{\"page\":\"backups\"}'"},
+  "mullet.infobar": {"icon":"󰘖","label":"Info bar","description":"Workspaces, clock, weather, status, quote","action":"omarchy-shell daa.infobar toggle"},
+  "mullet.map": {"icon":"󰈙","label":"Desktop map","description":"What triggers what (regenerated each time)","action":"config-map && uwsm-app -- xdg-open ~/Documents/desktop-map.md"},
+  "mullet.ideas": {"icon":"󰛨","label":"Ideas list","description":"The running ideas backlog","action":"uwsm-app -- xdg-open ~/Documents/desktop-ideas.md"},

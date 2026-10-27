@@ -49,6 +49,40 @@ local dropdowns = {
     px = { 760, 520 }, right = 10, slide = "slide" },
 }
 
+-- Scratchpads made with the builder (Desktop settings → Scratchpads,
+-- daa.settings) live in their own file, generated from
+-- ~/.config/hypr/dropdowns_user.json, so they can't break the list above.
+-- Each is a `match` dropdown (claims the first window of its class).
+do
+  local path = (os.getenv("HOME") or "") .. "/.config/hypr/dropdowns_user.lua"
+  local ok, extra = pcall(dofile, path)
+  if ok and type(extra) == "table" then
+    local taken = {}
+    for _, d in ipairs(dropdowns) do taken[d.name] = true end
+    for _, d in ipairs(extra) do
+      if type(d) == "table" and d.name and d.cmd and not taken[d.name] then
+        d.user = true
+        table.insert(dropdowns, d)
+        taken[d.name] = true
+      end
+    end
+  end
+end
+
+-- Desktop settings → Startup can switch preloading off per dropdown: one
+-- name per line in ~/.config/hypr/preload_off.
+do
+  local f = io.open((os.getenv("HOME") or "") .. "/.config/hypr/preload_off", "r")
+  if f then
+    local off = {}
+    for line in f:lines() do off[line:match("^%s*(.-)%s*$")] = true end
+    f:close()
+    for _, d in ipairs(dropdowns) do
+      if off[d.name] then d.preload = false end
+    end
+  end
+end
+
 -- Bitwarden reloads its window and asks for focus every time the vault locks;
 -- with Omarchy's focus_on_activate that pulled the hidden dropdown into view.
 o.window("^Bitwarden$", { focus_on_activate = false })
@@ -386,9 +420,18 @@ end)
 -- Whenever a scratchpad (any special workspace) comes up, put the cursor in
 -- the middle of its window, clamped to the screen for ones that hang off the
 -- top. A beat later, so rise dropdowns have their target position set.
+-- Settings (daa.settings): "cursorCenterDropdowns": false turns this off.
+local function center_enabled()
+  local f = io.open((os.getenv("HOME") or "") .. "/.config/omarchy/daa-ui.json", "r")
+  if not f then return true end
+  local text = f:read("a") or ""
+  f:close()
+  return not text:find('"cursorCenterDropdowns"%s*:%s*false')
+end
+
 hl.on("workspace.special_active", function(ws)
   local name = ws and ws.name or nil
-  if not name then return end
+  if not name or not center_enabled() then return end
   hl.timer(function()
     local monitor = hl.get_active_monitor()
     local shown = monitor and monitor.active_special_workspace

@@ -637,7 +637,26 @@ Item {
 
   readonly property bool vertical: position === "left" || position === "right"
   // +2 top and +2 bottom so pill contents (the Arch logo) clear the pill edge.
-  readonly property int barSize: vertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal + Style.space(4)
+  // Desktop settings → Tablet: tabletBarSize scales it (0.7-1.8x).
+  readonly property int barSize: Math.round((vertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal + Style.space(4)) * root.barScale)
+
+  // Desktop settings → Tablet (~/.config/omarchy/daa-ui.json): size and style.
+  //   solid    the plain strip (default)
+  //   floating a rounded bar held off the screen edges
+  //   glass    see-through strip
+  //   clear    no strip, just the icons
+  property var ui: ({})
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/daa-ui.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { root.ui = JSON.parse(text()) || {} } catch (e) { root.ui = {} } }
+    onLoadFailed: root.ui = {}
+  }
+  readonly property real barScale: Math.max(0.7, Math.min(1.8, Number(root.ui.tabletBarSize) || 1))
+  readonly property string barStyle: ["solid", "floating", "glass", "clear"].indexOf(root.ui.tabletBarStyle) !== -1 ? root.ui.tabletBarStyle : "solid"
+  readonly property int floatGap: root.barStyle === "floating" ? Style.space(8) : 0
 
   function normalizePosition(value) {
     return BarModel.normalizePosition(value)
@@ -1341,10 +1360,10 @@ Item {
     }
 
     margins {
-      top: root.barHidden && root.position === "top" ? -root.barSize : 0
-      bottom: root.barHidden && root.position === "bottom" ? -root.barSize : 0
-      left: root.barHidden && root.position === "left" ? -root.barSize : 0
-      right: root.barHidden && root.position === "right" ? -root.barSize : 0
+      top: root.barHidden && root.position === "top" ? -(root.barSize + root.floatGap * 2) : 0
+      bottom: root.barHidden && root.position === "bottom" ? -(root.barSize + root.floatGap * 2) : 0
+      left: root.barHidden && root.position === "left" ? -(root.barSize + root.floatGap * 2) : 0
+      right: root.barHidden && root.position === "right" ? -(root.barSize + root.floatGap * 2) : 0
     }
 
     anchors {
@@ -1354,17 +1373,29 @@ Item {
       right: root.position === "right" || !root.vertical
     }
 
-    implicitWidth: root.vertical ? root.barSize : 0
-    implicitHeight: root.vertical ? 0 : root.barSize
+    implicitWidth: root.vertical ? root.barSize + root.floatGap * 2 : 0
+    implicitHeight: root.vertical ? 0 : root.barSize + root.floatGap * 2
     // Islands mode: the strip itself is clear; each section draws its own pill.
-    // Tablet mode paints a plain strip instead and hides the pills.
-    color: root.tabletMode ? root.background : "transparent"
+    // Tablet mode paints a strip instead (barStyle: solid / floating / glass / clear).
+    color: "transparent"
     surfaceFormat.opaque: false
     WlrLayershell.namespace: "omarchy-bar"
     WlrLayershell.layer: WlrLayer.Top
 
+    Rectangle {
+      anchors.fill: parent
+      anchors.margins: root.floatGap
+      radius: root.barStyle === "floating" ? Math.min(width, height) / 2 : 0
+      color: root.barStyle === "clear" ? "transparent"
+        : root.barStyle === "glass" ? Util.alpha(root.background, 0.45) : root.background
+      border.width: root.barStyle === "floating" ? 1 : 0
+      border.color: Util.alpha(root.barForeground, 0.12)
+      Behavior on radius { NumberAnimation { duration: 200 } }
+    }
+
     Loader {
       anchors.fill: parent
+      anchors.margins: root.floatGap
       sourceComponent: root.vertical ? verticalBar : horizontalBar
 
       // A child of the loader, not a sibling of the sections: an ancestor stays
@@ -1901,7 +1932,7 @@ Item {
   // touch apps, keyboard, auto-rotate, Omarchy logo (quick toggles), play/pause. The
   // center keeps only the clock; the right section stays as configured.
   readonly property var tabletLeftEntries: [{ id: "daa.tablet-workspace" }, { id: "daa.tablet-menu" }, { id: "daa.tablet-apps" }, { id: "daa.tablet-keyboard" },
-    { id: "daa.tablet-rotate" }, { id: "daa.tablet-quick" }, { id: "daa.tablet-media" }]
+    { id: "daa.tablet-rotate" }, { id: "daa.tablet-greet" }, { id: "daa.tablet-quick" }, { id: "daa.tablet-media" }]
 
   // System stats for the right island's hover flyout. One sampler serves every
   // monitor's bar and only polls while some flyout is open.

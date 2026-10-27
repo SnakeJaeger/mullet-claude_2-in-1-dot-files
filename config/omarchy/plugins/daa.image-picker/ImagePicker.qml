@@ -49,7 +49,10 @@ Item {
 
   onOpenedChanged: {
     if (!opened) layoutSettled = false
-    else if (!doubleClickProbe.running) doubleClickProbe.running = true
+    else {
+      if (!doubleClickProbe.running) doubleClickProbe.running = true
+      if (!tabletDoubleTapProbe.running) tabletDoubleTapProbe.running = true
+    }
   }
 
   // daa: two-finger touchpad (or wheel) scrolling. Scrolling down or right
@@ -94,6 +97,29 @@ Item {
     id: doubleClickProbe
     command: ["test", "-e", root.doubleClickOffFile]
     onExited: function(code) { root.doubleClickEnabled = code !== 0 }
+  }
+
+  // daa: in tablet mode a double tap on the wallpaper only opens this picker
+  // when this flag file exists (off by default; a single tap there tidies up).
+  readonly property string tabletDoubleTapFile: stateHome + "/omarchy/toggles/wallpaper-doubletap-tablet-on"
+  property bool tabletDoubleTap: false
+
+  function toggleTabletDoubleTap() {
+    root.tabletDoubleTap = !root.tabletDoubleTap
+    Quickshell.execDetached(["bash", "-c", root.tabletDoubleTap
+      ? "mkdir -p \"$(dirname " + Util.shellQuote(root.tabletDoubleTapFile) + ")\" && touch " + Util.shellQuote(root.tabletDoubleTapFile)
+      : "rm -f " + Util.shellQuote(root.tabletDoubleTapFile)])
+  }
+
+  Process {
+    id: tabletDoubleTapProbe
+    command: ["test", "-e", root.tabletDoubleTapFile]
+    onExited: function(code) { root.tabletDoubleTap = code === 0 }
+  }
+
+  function openAether() {
+    root.cancel()
+    Quickshell.execDetached(["bash", "-c", "setsid -f aether >/dev/null 2>&1"])
   }
 
   function scriptPath(name) {
@@ -431,6 +457,34 @@ Item {
       onWheel: function(wheel) { root.handleWheel(wheel) }
     }
 
+    // daa: Aether (wallpaper-to-theme maker), written out in the Omarchy
+    // font in the screen's bottom-left corner; tap to open it.
+    Text {
+      id: aetherLink
+      visible: root.opened && root.imagesLoaded
+      anchors.left: parent.left
+      anchors.bottom: parent.bottom
+      anchors.leftMargin: Style.space(28)
+      anchors.bottomMargin: Style.space(22)
+      text: "aether"
+      color: aetherArea.containsMouse ? Commons.Color.accent : root.foreground
+      opacity: aetherArea.containsMouse ? 1 : 0.75
+      font.family: Style.font.family
+      font.pixelSize: Style.font.title * 1.6
+      font.bold: true
+      font.letterSpacing: Style.font.title * 0.35
+      font.underline: aetherArea.containsMouse
+      Behavior on color { ColorAnimation { duration: 120 } }
+      MouseArea {
+        id: aetherArea
+        anchors.fill: parent
+        anchors.margins: -Style.space(8)
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.openAether()
+      }
+    }
+
     Item {
       id: card
       visible: root.opened && root.imagesLoaded && root.layoutSettled && root.imageArray.length > 0
@@ -649,6 +703,62 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: root.toggleDoubleClick()
+          }
+        }
+
+        // daa: on/off for a double tap opening this picker in tablet mode.
+        Rectangle {
+          id: tabletToggle
+          z: 5
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: Style.space(2)
+          anchors.right: doubleClickToggle.left
+          anchors.rightMargin: Style.space(8)
+          width: tabletRow.implicitWidth + Style.space(20)
+          height: Style.space(24)
+          radius: height / 2
+          color: Util.alpha(root.dimColor, tabletArea.containsMouse ? 0.85 : 0.6)
+
+          Row {
+            id: tabletRow
+            anchors.centerIn: parent
+            spacing: Style.space(8)
+
+            Text {
+              textFormat: Text.PlainText
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Double-tap in tablet mode"
+              color: root.foreground
+              opacity: 0.85
+              font.pixelSize: Style.font.body
+            }
+
+            Rectangle {
+              anchors.verticalCenter: parent.verticalCenter
+              width: Style.space(28)
+              height: Style.space(16)
+              radius: height / 2
+              color: root.tabletDoubleTap ? root.selectedBorder : Util.alpha(root.foreground, 0.25)
+              Behavior on color { ColorAnimation { duration: 120 } }
+
+              Rectangle {
+                width: parent.height - Style.space(4)
+                height: width
+                radius: width / 2
+                anchors.verticalCenter: parent.verticalCenter
+                x: root.tabletDoubleTap ? parent.width - width - Style.space(2) : Style.space(2)
+                color: root.foreground
+                Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+              }
+            }
+          }
+
+          MouseArea {
+            id: tabletArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.toggleTabletDoubleTap()
           }
         }
 

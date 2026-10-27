@@ -22,7 +22,17 @@ local function occupied_workspaces()
   return ids, by_id
 end
 
+-- Desktop settings (daa.settings): "workspaceCollapse": false turns this off.
+local function enabled()
+  local f = io.open((os.getenv("HOME") or "") .. "/.config/omarchy/daa-ui.json", "r")
+  if not f then return true end
+  local text = f:read("a") or ""
+  f:close()
+  return not text:find('"workspaceCollapse"%s*:%s*false')
+end
+
 local function collapse()
+  if not enabled() then return end
   local active = hl.get_active_workspace()
   -- Standing on an empty workspace usually means you're about to open
   -- something there; don't shuffle windows into it from under you.

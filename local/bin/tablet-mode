@@ -13,6 +13,8 @@
 #                               ("new" is refused while the current one is empty)
 #   tablet-mode window focus|close ADDRESS
 #   tablet-mode hide-scratchpads  retract any scratchpad / dropdown showing
+#   tablet-mode gestures        (re)start touchscreen gestures for the current mode
+#   tablet-mode restyle         re-apply the tablet colour / text size (settings changed)
 #   tablet-mode dismiss         hide keyboard, scratchpads, menus and bar popups
 #                               (a tap on the wallpaper in tablet mode)
 #
@@ -88,6 +90,8 @@ keyboard_toggle() {
   fi
 }
 
+# Touchscreen gestures run in both modes: "gestures" (the touchpad's
+# three-finger swipes) always, "tablet_gestures" (edge swipes) only in tablet mode.
 start_gestures() {
   pgrep -x lisgd >/dev/null && return
   command -v lisgd >/dev/null || return
@@ -97,9 +101,10 @@ start_gestures() {
   dev=$(grep -l "Wacom HID 544C Finger" /sys/class/input/event*/device/name 2>/dev/null | head -1)
   [[ -n $dev ]] || return
   dev="/dev/input/$(basename "$(dirname "$(dirname "$dev")")")"
-  local gestures=() args=() g
+  local gestures=() tablet_gestures=() args=() g
   # shellcheck source=/dev/null
   source "$GESTURES"
+  [[ $(status) == on ]] && gestures+=("${tablet_gestures[@]}")
   for g in "${gestures[@]}"; do args+=(-g "$g"); done
   # -w/-h: the panel's resolution, so edge detection lines up; -o: current rotation.
   local rot
@@ -107,7 +112,10 @@ start_gestures() {
   setsid -f lisgd -d "$dev" -w 2880 -h 1800 -o "$rot" "${args[@]}" >/dev/null 2>&1
 }
 
-stop_gestures() { pkill -x lisgd; }
+stop_gestures() {
+  pkill -x lisgd || return 0
+  local i; for i in {1..20}; do pgrep -x lisgd >/dev/null || return 0; sleep 0.05; done
+}
 
 # Retract whatever scratchpad or dropdown is showing on each monitor.
 hide_scratchpads() {
@@ -141,6 +149,28 @@ TABLET_BAR="daa.tablet-bar"
 # ([popups] border-width = 0 in shell.toml). Window borders keep the theme.
 TABLET_ACCENT="#ff6b81"
 
+# Tablet look, from Desktop settings → Tablet (~/.config/omarchy/daa-ui.json):
+# tabletAccent (default above) and tabletTextScale (text and bar size, 1.5x).
+UI_JSON="$HOME/.config/omarchy/daa-ui.json"
+ui_get() { jq -r --arg k "$1" '.[$k] // empty' "$UI_JSON" 2>/dev/null; }
+
+# Write the tablet overlay on top of the saved laptop shell.toml.
+tablet_style() {
+  local accent scale base
+  accent=$(ui_get tabletAccent); [[ $accent =~ ^#[0-9a-fA-F]{6}$ ]] || accent=$TABLET_ACCENT
+  scale=$(ui_get tabletTextScale); [[ $scale =~ ^[0-9.]+$ ]] || scale=1.5
+  cp "$STATE_DIR/shell.toml" "$SHELL_TOML"
+  base=$(sed -n 's/^base-size *= *\([0-9]\+\).*/\1/p' "$STATE_DIR/shell.toml" | head -1)
+  base=$(awk -v b="${base:-12}" -v s="$scale" 'BEGIN { printf "%d", b * s + 0.5 }')
+  if grep -q '^base-size' "$SHELL_TOML" 2>/dev/null; then
+    sed -i "s/^base-size *=.*/base-size = $base/" "$SHELL_TOML"
+  else
+    printf '[font]\nbase-size = %s\n' "$base" >> "$SHELL_TOML"
+  fi
+  printf '\n[tablet]\naccent = "%s"\n\n[menu]\nselected-text = "%s"\nborder-width = 0\n\n[notifications]\ncountdown = "%s"\nborder-width = 0\n' \
+    "$accent" "$accent" "$accent" >> "$SHELL_TOML"
+}
+
 bar_tablet() {
   [[ -f $STATE_DIR/bar ]] || jq -c '{id: .bar.id, position: .bar.position}' "$SHELL_JSON" > "$STATE_DIR/bar"
   omarchy bar use "$TABLET_BAR" >/dev/null
@@ -148,16 +178,7 @@ bar_tablet() {
   # its icons and clock) 50% bigger. The shell reloads shell.toml on save.
   if [[ ! -f $STATE_DIR/shell.toml ]]; then
     cp "$SHELL_TOML" "$STATE_DIR/shell.toml" 2>/dev/null || : > "$STATE_DIR/shell.toml"
-    local base
-    base=$(sed -n 's/^base-size *= *\([0-9]\+\).*/\1/p' "$STATE_DIR/shell.toml" | head -1)
-    base=$(( ( ${base:-12} * 3 + 1 ) / 2 ))
-    if grep -q '^base-size' "$SHELL_TOML" 2>/dev/null; then
-      sed -i "s/^base-size *=.*/base-size = $base/" "$SHELL_TOML"
-    else
-      printf '[font]\nbase-size = %s\n' "$base" >> "$SHELL_TOML"
-    fi
-    printf '\n[tablet]\naccent = "%s"\n\n[menu]\nselected-text = "%s"\nborder-width = 0\n\n[notifications]\ncountdown = "%s"\nborder-width = 0\n' \
-      "$TABLET_ACCENT" "$TABLET_ACCENT" "$TABLET_ACCENT" >> "$SHELL_TOML"
+    tablet_style
   fi
   omarchy bar position "${BAR_EDGE[$(cat "$STATE_DIR/rotation" 2>/dev/null || echo 0)]}" >/dev/null
 }
@@ -191,6 +212,26 @@ bar_laptop() {
 # The sensor's latest orientation is kept in $STATE_DIR/sensor even while
 # auto-rotate is locked ($STATE_DIR/rotate-lock exists), so unlocking can snap
 # straight to the way the screen is being held.
+# All the way round: four quarter-turns the same way within 15 s.
+# Turning the tablet clockwise lifts its left edge (normal -> left-up ->
+# bottom-up -> right-up), i.e. 0 1 2 3 0. Runs inside autorotate's loop.
+SPIN_SEQ=() SPIN_TIMES=()
+spin_check() {
+  local now=$SECONDS n
+  SPIN_SEQ+=("$1"); SPIN_TIMES+=("$now")
+  (( ${#SPIN_SEQ[@]} > 5 )) && { SPIN_SEQ=("${SPIN_SEQ[@]: -5}"); SPIN_TIMES=("${SPIN_TIMES[@]: -5}"); }
+  (( ${#SPIN_SEQ[@]} == 5 && now - SPIN_TIMES[0] <= 15 )) || return 0
+  local cw=1 ccw=1 i d
+  for i in 1 2 3 4; do
+    d=$(( (SPIN_SEQ[i] - SPIN_SEQ[i-1] + 4) % 4 ))
+    (( d == 1 )) || cw=0
+    (( d == 3 )) || ccw=0
+  done
+  (( cw || ccw )) || return 0
+  SPIN_SEQ=() SPIN_TIMES=()
+  omarchy-shell -q shell summon daa.spin "{\"mode\":\"$( (( cw )) && echo dizzy || echo crash )\"}"
+}
+
 autorotate() {
   command -v monitor-sensor >/dev/null || exit 0
   local t
@@ -204,6 +245,7 @@ autorotate() {
     esac
     echo "$t" > "$STATE_DIR/sensor"
     [[ $(status) == on && ! -e $STATE_DIR/rotate-lock ]] && rotate_to "$t"
+    spin_check "$t"
   done
 }
 
@@ -267,12 +309,14 @@ on() {
   device_enabled "$TOUCHPAD_MOUSE" false
   bar_tablet
   background_swap laptop tablet
-  start_gestures
+  stop_gestures; start_gestures
   keyboard_start
   if [[ -e /sys/bus/iio/devices/iio:device0 ]] && command -v monitor-sensor >/dev/null; then
     pgrep -f "tablet-mode autorotate" >/dev/null || setsid -f "$0" autorotate >/dev/null 2>&1
   fi
   osd "󰓶  Tablet mode"
+  # The greeter (daa.tablet-greeter) checks its own on/off setting.
+  omarchy-shell -q shell summon daa.tablet-greeter '{"auto":true}' 2>/dev/null
 }
 
 off() {
@@ -281,7 +325,6 @@ off() {
   device_enabled "$KEYBOARD" true
   device_enabled "$TOUCHPAD" true
   device_enabled "$TOUCHPAD_MOUSE" true
-  stop_gestures
   pkill -f "tablet-mode autorotate"
   pkill -x monitor-sensor
   pkill -x wvkbd-mobintl
@@ -291,6 +334,7 @@ off() {
   rotate_to 0
   bar_laptop
   background_swap tablet laptop
+  stop_gestures; start_gestures
   osd "󰌌  Laptop mode"
 }
 
@@ -311,6 +355,8 @@ case "$1" in
   workspace) go_workspace "$2" ;;
   window) window_cmd "$2" "$3" ;;
   hide-scratchpads) hide_scratchpads ;;
+  gestures) stop_gestures; start_gestures ;;
+  restyle) [[ $(status) == on && -f $STATE_DIR/shell.toml ]] && tablet_style ;;
   dismiss) dismiss ;;
-  *) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

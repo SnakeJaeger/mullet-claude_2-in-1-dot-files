@@ -39,6 +39,9 @@ which swaps the desktop bar for the tablet bar and back.
 | `daa.clipboard` | Clipboard manager (SUPER+V, SUPER+CTRL+V), borderless, bottom-right, slides in from the right; header Clear button (= Shift+Delete, asks first) |
 | `daa.launcher` | App launcher: search + Web/Utility/Create/Communicate/Entertain tabs (scroll rail in tablet mode) |
 | `daa.search` | Quick search box (tap SUPER alone; release bind in hypr/bindings.lua): apps, then Search files (Catfish dropdown) / Search the web |
+| `daa.settings` | Settings hub (`SUPER + CTRL + ALT + S`, `/settings`, Go menu footer **Settings**, Mullet Works › Settings hub): sidebar of grouped pages + Home (HomePage.qml: search across every setting / page / device app / keybinding, category tiles, device apps, quick actions). Pages: Themes and colours (LookPage + accent colours), Motion, Top bar (BarPage), Logo card (favourites), Windows and workspaces, Window rules (WindowRules → `rules-tool`), Dropdowns (Scratchpads → `scratch-tool`), Keyboard shortcuts (Keys → `keys-tool`), Go menu, Device settings (DevicesPage: shell panels + settings apps found by desktop category, add any app, move / hide; lists live in Settings.qml), Notifications, Power, Startup (`startup-apps`), Login screen (`sddm-tool` + pkexec `sddm-apply`), Backups (`checkpoint`), Lab (`lab-tool`). Switch / slider / choice rows are the `sections` list (each tagged with its `page`); `root.go(page, key, filter)` opens a page and flashes a setting. Writes `~/.config/omarchy/daa-ui.json`, which the plugins watch. `~/.local/bin/config-map` writes ~/Documents/desktop-map.md |
+| `daa.powerbar` | Power bar (`SUPER + ESCAPE`, power button): band across the dimmed screen — **S**creensaver, **L**ock, **R**eboot, L**o**gout, Shut**d**own |
+| `daa.zap` | `SUPER + SHIFT + Q`: a scope cursor; click a window to end every process of its program (`~/.local/bin/zap-app`), right click / Esc cancels |
 | `daa.osd` | On-screen display |
 | `daa.background` | Wallpaper (tap = dismiss in tablet mode) |
 | `daa.tray` | System tray, clone of omarchy.tray: the collapsed drawer takes no width; click the arrow to keep the drawer open (tablet bar: tap-only, wallpaper tap folds it); both BarModel.js files treat it as the tray |
@@ -47,7 +50,6 @@ which swaps the desktop bar for the tablet bar and back.
 | `daa.monitor` | Display panel, clone of omarchy.monitor: + Night light / Stay awake / Recording chips |
 | `daa.clock` | Clock + calendar, clone of omarchy.clock: + Reminder chip; shell.json centerAnchor is daa.clock |
 | `daa.weather` | Bar weather button, clone of omarchy.weather: left click toggles the GNOME Weather dropdown (SUPER+ALT+W, hypr/dropdowns.lua) instead of the popup; SUPER+CTRL+ALT+W still opens the popup |
-| `daa.lock` | Lock screen, clone of omarchy.lock: adds the Mullet Claude outline avatar (avatar.png) above the password field |
 
 ## Other files
 
@@ -74,3 +76,15 @@ All old `.bak` files: `~/.local/state/config-backups/`
 backups, `pre-reorg-*.tar.gz` is a full snapshot taken before the
 `daa.desktop-*` rename, `unused-clone-files/` holds the bars' never-loaded
 `widgets/` + `indicators/` copies and the retired `daa.tablet` button).
+
+## daa.overview
+SUPER + TAB (tablet: diagonal swipe in from a corner): open apps by workspace with live previews; the corner x closes, drag a card onto another workspace row (or "new workspace") to move it.
+
+## daa.bluetooth
+Clone of omarchy.bluetooth with a "Refresh devices" button (restarts discovery). Keeps the omarchy.bluetooth IPC target.
+
+## daa.tablet-greeter (2026-10-26)
+Greets tablet mode (`tablet-mode on` summons it with `{"auto":true}`; skipped if `tabletGreeter` is off). Windows Phone style tiles in the tablet accent (small / wide / large, first-fit packed, 6 columns landscape / 4 portrait), clock + battery live tiles, turnstile in/out, press tilt. Frame + light trails copied from daa.launcher (follows `launcherTrails`). Dismiss: tap outside, corner x, "Not now", Esc; closes itself when any window opens. Also: tablet menu → Greeter, Settings → Tablet → Preview greeter.
+Settings (daa-ui.json): tabletGreeter, tabletTurnstile, tabletTiles [{id, size}], tabletTileColors accent|palette|dark, tabletTileIcons colour|mono, tabletAccent, tabletTextScale; tablet bar: tabletBarSize (0.7-1.8), tabletBarStyle solid|floating|glass|clear (daa.tablet-bar reads them live). Accent + text scale apply via `tablet-mode restyle` (rewrites the shell.toml tablet overlay while tablet mode is on). Tablet wallpaper = ~/.local/state/tablet-mode/background-tablet. Settings page: daa.settings/TabletPage.qml + "tablet" sections.
+Later the same day: Continue tiles (wide, first) from ~/.local/bin/tablet-continue (JSON: Foliate, Komikku, Krita/Rnote/Xournal++ recent, Jellyfin resume if ~/.local/share/daa/jellyfin.env has JELLYFIN_URL/KEY/USER; never in the dots repo); setting tabletContinue. tabletGreeterOpacity (15-100 %, box + scrim). Preview from settings ({"preview":true}) hides Settings and reopens it on close. Tablet bar: daa.tablet-greet (Omarchy logo) toggles the greeter; daa.tablet-quick now a tune icon (quick toggles).
+

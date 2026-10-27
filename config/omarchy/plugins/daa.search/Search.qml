@@ -17,6 +17,55 @@ import qs.Ui
 Item {
   id: root
 
+  // The theme's extra colours (green, magenta, yellow, orange, cyan, blue)
+  // for multi-coloured effects, re-read when the theme changes.
+  property var themePalette: ["#9ece6a", "#bb9af7", "#e0af68", "#ff9e64", "#73daca", "#7aa2f7"]
+  FileView {
+    path: Quickshell.env("HOME") + "/.local/state/omarchy/current/theme/colors.toml"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      var t = String(text())
+      var out = []
+      var keys = ["green", "magenta", "yellow", "orange", "cyan", "blue"]
+      for (var i = 0; i < keys.length; i++) {
+        var m = t.match(new RegExp("^\\s*" + keys[i] + "\\s*=\\s*[\"']?(#[0-9a-fA-F]{6})", "m"))
+        if (m) out.push(m[1])
+      }
+      if (out.length) root.themePalette = out
+    }
+  }
+
+  // Desktop UI settings (daa.settings writes ~/.config/omarchy/daa-ui.json;
+  // a missing key means its default, i.e. on).
+  property var ui: ({})
+  function uiOpt(key, fallback) {
+    // Calm mode (power-saver; daa.settings writes ~/.local/state/daa/calm):
+    // the decorative animations pause, whatever their own switches say.
+    if (root.calm && root.calmKeys.indexOf(key) !== -1) return false
+    var v = root.ui ? root.ui[key] : undefined; return v === undefined || v === null ? fallback : v
+  }
+  readonly property var calmKeys: ["goMenuAnimations", "duel", "launcherTrails", "shortcutCardAnimations",
+    "shortcutCardTrails", "workspaceSpring", "magellanic", "breathingBorders", "barAlertPulse"]
+  property bool calm: false
+  FileView {
+    path: Quickshell.env("HOME") + "/.local/state/daa/calm"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.calm = String(text()).trim() === "1"
+    onLoadFailed: root.calm = false
+  }
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/daa-ui.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { root.ui = JSON.parse(text() || "{}") } catch (e) {} }
+    onLoadFailed: root.ui = ({})   // file deleted: all defaults
+  }
+
   property var shell: null
   property var manifest: null
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
@@ -67,9 +116,9 @@ Item {
     bloodFade.toAccent = root.savedAccent
     bloodFade.toForeground = root.savedForeground
     bloodFade.start()
-    // Back to what hypr/looknfeel.lua sets.
+    // Back to what hypr/looknfeel.lua sets (theme or chosen accents).
     Quickshell.execDetached(["hyprctl", "eval",
-      'hl.config({ general = { col = { active_border = { colors = { "rgb(7dcfff)", "rgb(f7768e)" }, angle = 45 } } } })'])
+      'local a, b = daa_accent_colors(); hl.config({ general = { col = { active_border = { colors = { "rgb(" .. a .. ")", "rgb(" .. b .. ")" }, angle = 45 } } } })'])
   }
 
   Timer { id: bloodTimer; interval: 60000; onTriggered: root.unblood() }
@@ -105,6 +154,7 @@ Item {
   }
 
   function konamiKey(key) {
+    if (!root.uiOpt("konami", true)) return   // Settings: "konami"
     if (key === root.konami[root.konamiAt]) root.konamiAt++
     else root.konamiAt = key === root.konami[0] ? 1 : 0
     if (root.konamiAt === root.konami.length) {
@@ -168,6 +218,11 @@ Item {
     { name: "vpn", desc: "Mullvad dropdown", glyph: "󰦝", command: "hyprctl eval 'dropdown_show(\"vpn\")'" },
     { name: "lab", desc: "Remote desktop (Remmina)", glyph: "󰢹", command: "uwsm-app -- remmina", lab: true },
     { name: "keys", desc: "Keybindings", glyph: "󰌌", command: "omarchy-shell shell summon omarchy.menu '{\"menu\":\"root\",\"keys\":true}'" },
+    { name: "ssh", desc: "Hosts from ~/.ssh/config", glyph: "󰣀", fill: "/ssh " },
+    { name: "lab", desc: "GNS3 projects and lab services", glyph: "󰌗", fill: "/lab " },
+    { name: "ping", desc: "/ping <host>: live latency", glyph: "󰛳", fill: "/ping " },
+    { name: "focus", desc: "Focus mode: hide bar, mute, dim the rest", glyph: "󰈈", command: "~/.local/bin/focus-mode" },
+    { name: "settings", desc: "Desktop settings (animations)", glyph: "󰒓", command: "omarchy-shell shell toggle daa.settings" },
     { name: "restart-shell", desc: "Restart the Omarchy shell", glyph: "󰑓", command: "omarchy-restart-shell" }
   ].filter(function(c) { return !(c.lab && root.guest) })
   property color background: Commons.Color.menu.background
@@ -241,10 +296,216 @@ Item {
 
   // Apps whose name starts with the query first, then name contains, then
   // generic name / keywords; alphabetical within each.
+  // ---- Calculator: subnets, maths, data rates, number bases ----
+  // Returns rows ({ kind: "calc", label, detail, copy }) for the query, or [].
+  function ipToInt(ip) {
+    var p = ip.split(".")
+    if (p.length !== 4) return -1
+    var n = 0
+    for (var i = 0; i < 4; i++) {
+      if (!/^\d{1,3}$/.test(p[i]) || Number(p[i]) > 255) return -1
+      n = n * 256 + Number(p[i])
+    }
+    return n
+  }
+  function intToIp(n) {
+    return [Math.floor(n / 16777216) % 256, Math.floor(n / 65536) % 256, Math.floor(n / 256) % 256, n % 256].join(".")
+  }
+  function fmtNum(v) {
+    if (!isFinite(v)) return null
+    var r = Math.abs(v) >= 1e15 || (Math.abs(v) < 1e-6 && v !== 0) ? v.toExponential(6) : String(Math.round(v * 1e9) / 1e9)
+    return r
+  }
+  function calcRows(raw) {
+    var t = raw.trim()
+    // Subnet: a.b.c.d/nn or a.b.c.d mask
+    var m = t.match(/^(\d{1,3}(?:\.\d{1,3}){3})\s*(?:\/\s*(\d{1,2})|\s+(\d{1,3}(?:\.\d{1,3}){3}))$/)
+    if (m) {
+      var ip = root.ipToInt(m[1])
+      var bits = -1
+      if (m[2] !== undefined) bits = Number(m[2])
+      else {
+        var mk = root.ipToInt(m[3])
+        if (mk >= 0) { var b = mk.toString(2); if (/^1*0*$/.test(("00000000000000000000000000000000" + b).slice(-32))) bits = (b.match(/1/g) || []).length }
+      }
+      if (ip >= 0 && bits >= 0 && bits <= 32) {
+        var size = Math.pow(2, 32 - bits)
+        var net = Math.floor(ip / size) * size
+        var bc = net + size - 1
+        var mask = 4294967296 - size
+        var hosts = bits >= 31 ? size : size - 2
+        var first = bits >= 31 ? net : net + 1, last = bits >= 31 ? bc : bc - 1
+        // Same fields, same order as ipcalc: Address, Netmask, Wildcard,
+        // Network, HostMin, HostMax, Broadcast, Hosts/Net.
+        function row(label, value, copy) {
+          return { kind: "calc", glyph: "", label: value, detail: label, copy: copy || value }
+        }
+        return [
+          row("Address", root.intToIp(ip)),
+          row("Netmask", root.intToIp(mask) + " = " + bits, root.intToIp(mask)),
+          row("Wildcard", root.intToIp(size - 1)),
+          row("Network", root.intToIp(net) + "/" + bits),
+          row("HostMin", root.intToIp(first)),
+          row("HostMax", root.intToIp(last)),
+          row("Broadcast", root.intToIp(bc)),
+          row("Hosts/Net", hosts.toLocaleString(), String(hosts))
+        ]
+      }
+    }
+    // Number bases: "0x1F in dec", "255 in hex", "0b1010 in dec", "42 in bin"
+    m = t.match(/^(0x[0-9a-f]+|0b[01]+|0o[0-7]+|\d+)\s+(?:in|to)\s+(hex|dec|bin|oct)$/i)
+    if (m) {
+      var v = Number(m[1].toLowerCase().replace(/^0o/, "0o"))
+      if (/^0b/i.test(m[1])) v = parseInt(m[1].slice(2), 2)
+      if (/^0o/i.test(m[1])) v = parseInt(m[1].slice(2), 8)
+      var base = m[2].toLowerCase()
+      var out = base === "hex" ? "0x" + v.toString(16).toUpperCase() : base === "bin" ? "0b" + v.toString(2)
+        : base === "oct" ? "0o" + v.toString(8) : String(v)
+      return [{ kind: "calc", glyph: "󰎠", label: out, detail: m[1] + " in " + base, copy: out }]
+    }
+    // Data sizes / rates: "100 mbit in MB/s", "1.5 GB in Mbit", "300 KiB in kb"
+    m = t.match(/^([\d.]+)\s*([kmgt]i?)?(bits?|bytes?|b)(\/s|ps)?\s+(?:in|to)\s+([kmgt]i?)?(bits?|bytes?|b)(\/s|ps)?$/i)
+    if (m) {
+      function factor(prefix, unit, rawUnit) {
+        var pf = { "": 1, k: 1e3, m: 1e6, g: 1e9, t: 1e12, ki: 1024, mi: 1048576, gi: 1073741824, ti: 1099511627776 }[(prefix || "").toLowerCase()]
+        // "b" is a byte when written B, a bit when written b; "bit(s)" / "byte(s)" spelled out.
+        var isByte = /^byte/i.test(unit) || unit === "B"
+        return pf * (isByte ? 8 : 1)
+      }
+      var bitsIn = Number(m[1]) * factor(m[2], m[3])
+      var res = bitsIn / factor(m[5], m[6])
+      var unitOut = (m[5] || "") + m[6] + (m[7] || "")
+      var outText = root.fmtNum(res)
+      if (outText !== null)
+        return [{ kind: "calc", glyph: "󰾆", label: outText + " " + unitOut, detail: m[1] + " " + (m[2] || "") + m[3] + (m[4] || ""), copy: outText }]
+    }
+    // Plain maths: digits, operators, parentheses, hex literals; ^ is power.
+    if (/[0-9]/.test(t) && /[-+*\/%^()]/.test(t) && /^[0-9a-fx+\-*\/%^().\s]+$/i.test(t)) {
+      try {
+        var val = Function("\"use strict\"; return (" + t.replace(/\^/g, "**") + ")")()
+        var shown = typeof val === "number" ? root.fmtNum(val) : null
+        if (shown !== null) return [{ kind: "calc", glyph: "󰃬", label: "= " + shown, detail: "Calculator", copy: shown }]
+      } catch (e) {}
+    }
+    return []
+  }
+
+  // ---- /lab: Lab API (address in ~/.config/lab-services/api) ----
+  property bool labWanted: false
+  property bool labLoading: false
+  property var labProjects: []
+  property var labServices: []
+  onLabWantedChanged: if (root.labWanted && !labProc.running) { root.labLoading = true; labProc.running = true }
+  Process {
+    id: labProc
+    command: ["bash", "-c", "a=$(cat ~/.config/lab-services/api 2>/dev/null); [ -n \"$a\" ] || exit 0; " +
+      "printf '{\"projects\":%s,\"services\":%s}' \"$(curl -s -m 4 $a/gns3/projects || echo [])\" \"$(curl -s -m 4 $a/services || echo [])\""]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.labLoading = false
+        try { var d = JSON.parse(text); root.labProjects = d.projects || []; root.labServices = d.services || [] } catch (e) {}
+        if (root.labWanted) root.rebuild()
+      }
+    }
+  }
+
+  // ---- /ssh and /ping ----
+  property var sshHosts: []
+  FileView {
+    path: Quickshell.env("HOME") + "/.ssh/config"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      var hosts = []
+      var lines = String(text()).split("\n")
+      for (var i = 0; i < lines.length; i++) {
+        var m = lines[i].match(/^\s*Host\s+(.+)$/i)
+        if (!m) continue
+        var names = m[1].trim().split(/\s+/)
+        for (var j = 0; j < names.length; j++)
+          if (names[j].indexOf("*") === -1 && names[j].indexOf("?") === -1 && hosts.indexOf(names[j]) === -1) hosts.push(names[j])
+      }
+      root.sshHosts = hosts
+    }
+  }
+  property string pingHost: ""
+  property string pingText: ""
+  onPingHostChanged: { root.pingText = ""; if (root.pingHost) pingTimer.restart() }
+  Timer {
+    id: pingTimer
+    interval: 1000
+    repeat: true
+    triggeredOnStart: true
+    running: root.opened && root.pingHost !== ""
+    // SSH aliases (e.g. lab) resolve through ~/.ssh/config first.
+    onTriggered: if (!pinger.running) {
+      pinger.command = ["bash", "-c", "h=$(ssh -G \"$1\" 2>/dev/null | awk '/^hostname /{print $2}'); ping -c 1 -W 1 \"${h:-$1}\"", "--", root.pingHost]
+      pinger.running = true
+    }
+  }
+  Process {
+    id: pinger
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var m = String(text).match(/time=([\d.]+)\s*ms/)
+        root.pingText = m ? root.pingHost + "  ·  " + Math.round(Number(m[1]) * 10) / 10 + " ms" : root.pingHost + "  ·  no reply"
+        if (root.pingHost) root.rebuild()
+      }
+    }
+  }
+
   function rebuild() {
     var q = root.query.trim().toLowerCase()
     var list = []
-    if (q.charAt(0) === "/") {
+    // /ssh [filter]: hosts from ~/.ssh/config, each opens in a terminal.
+    var sshMatch = q.match(/^\/ssh(?:\s+(\S*))?$/)
+    // /lab [filter]: GNS3 projects and lab services from the Lab API.
+    var labMatch = q.match(/^\/lab(?:\s+(.*))?$/)
+    root.labWanted = !!labMatch
+    // /ping <host>: live latency, refreshed every second (pinger below).
+    var pingMatch = root.query.trim().match(/^\/ping\s+([A-Za-z0-9._:-]+)$/)
+    root.pingHost = pingMatch ? pingMatch[1] : ""
+    if (labMatch) {
+      var lf = (labMatch[1] || "").trim()
+      var any = false
+      for (var pi = 0; pi < root.labProjects.length; pi++) {
+        var pr = root.labProjects[pi]
+        if (lf && pr.name.toLowerCase().indexOf(lf) === -1) continue
+        any = true
+        var isOpen = pr.status === "opened"
+        list.push({ kind: "shell", glyph: "󰌗", label: pr.name + (isOpen ? "  ·  open" : "")
+          + (pr.node_count !== null && pr.node_count !== undefined ? "  ·  " + pr.node_count + (pr.node_count === 1 ? " node" : " nodes") : ""),
+          detail: isOpen ? "Enter: web UI" : "Enter: open lab",
+          command: isOpen ? "uwsm-app -- xdg-open " + JSON.stringify(pr.url || "")
+            : "~/.local/bin/lab-action open " + pr.id + " " + JSON.stringify(pr.url || ""), quiet: true })
+        if (isOpen) list.push({ kind: "shell", glyph: "󰅖", label: "Close " + pr.name, detail: "GNS3",
+          command: "~/.local/bin/lab-action close " + pr.id, quiet: true })
+      }
+      for (var si = 0; si < root.labServices.length; si++) {
+        var sv = root.labServices[si]
+        if (!sv.restartable) continue
+        if (lf && sv.name.toLowerCase().indexOf(lf) === -1 && sv.id.indexOf(lf) === -1 && "restart".indexOf(lf) === -1) continue
+        any = true
+        list.push({ kind: "shell", glyph: "󰑓", label: "Restart " + sv.name, detail: "lab service",
+          command: "~/.local/bin/lab-action restart " + sv.id, quiet: true })
+      }
+      if (!any) list.push({ kind: "shell", glyph: "󰌗", label: root.labLoading ? "Asking the lab…" : "Nothing in the lab matches",
+        detail: "", command: "true", quiet: true })
+    } else if (sshMatch) {
+      var f = sshMatch[1] || ""
+      for (var h = 0; h < root.sshHosts.length; h++)
+        if (!f || root.sshHosts[h].toLowerCase().indexOf(f) !== -1)
+          list.push({ kind: "shell", label: "ssh " + root.sshHosts[h], detail: "~/.ssh/config", glyph: "󰣀",
+            command: "ssh " + root.sshHosts[h] })
+      if (!list.length) list.push({ kind: "shell", label: f ? "ssh " + f : "No hosts in ~/.ssh/config", glyph: "󰣀",
+        command: f ? "ssh " + f : "true" })
+    } else if (pingMatch) {
+      list.push({ kind: "ping", label: root.pingText || "pinging " + root.pingHost + "…", detail: "ping " + root.pingHost,
+        glyph: "󰛳", command: "ping " + root.pingHost })
+    } else if (q.charAt(0) === "/") {
       // Commands: name prefix first, then name or description contains.
       var term = q.slice(1)
       var hits = []
@@ -252,7 +513,7 @@ Item {
         var cmd = root.commands[c]
         var r = cmd.name.indexOf(term) === 0 ? 0 : cmd.name.indexOf(term) !== -1 ? 1
           : cmd.desc.toLowerCase().indexOf(term) !== -1 ? 2 : -1
-        if (r >= 0) hits.push({ kind: "command", label: "/" + cmd.name, detail: cmd.desc, glyph: cmd.glyph, command: cmd.command, rank: r, order: c })
+        if (r >= 0) hits.push({ kind: "command", label: "/" + cmd.name, detail: cmd.desc, glyph: cmd.glyph, command: cmd.command, fill: cmd.fill || "", rank: r, order: c })
       }
       // Ties keep the order of the list above.
       hits.sort(function(a, b) { return a.rank !== b.rank ? a.rank - b.rank : a.order - b.order })
@@ -262,6 +523,8 @@ Item {
       var exact = hits.length && hits[0].label === "/" + term
       if (typed && !exact) list.push({ kind: "shell", label: "Run “" + typed + "” in a terminal", glyph: "\uf120", command: typed })
     } else if (q) {
+      // Sums, subnets, unit and base conversions go first.
+      var calc = root.calcRows(root.query)
       var apps = []
       var values = DesktopEntries.applications.values || []
       for (var i = 0; i < values.length; i++) {
@@ -277,7 +540,7 @@ Item {
           detail: String(e.genericName || "") })
       }
       apps.sort(function(a, b) { return a.rank !== b.rank ? a.rank - b.rank : (a.key < b.key ? -1 : a.key > b.key ? 1 : 0) })
-      list = apps.slice(0, root.maxApps)
+      list = calc.concat(apps.slice(0, calc.length ? 3 : root.maxApps))
       var text = root.query.trim()
       list.push({ kind: "files", label: "Search files for “" + text + "”", glyph: "󰍉" })
       list.push({ kind: "web", label: "Search the web for “" + text + "”", glyph: "󰖟" })
@@ -287,11 +550,25 @@ Item {
   }
 
   function run(index) {
-    if (root.query.trim().toLowerCase() === "/comets") {
+    // Unlisted: "/adhd" opens the desktop settings (all the shiny toggles).
+    // Only with the slash, so searching for "adhd" still searches.
+    if (root.query.trim().toLowerCase() === "/adhd") {
+      root.dismiss()
+      Quickshell.execDetached(["omarchy-shell", "shell", "toggle", "daa.settings"])
+      return
+    }
+    if (root.query.trim().toLowerCase() === "/comets" && root.uiOpt("konami", true)) {
       root.query = ""; input.text = ""; root.rebuild(); storm.start(); return
     }
     if (index < 0 || index >= root.results.length) return
     var row = root.results[index]
+    // Commands that need more typing (/ssh, /ping) fill the box instead.
+    if (row.fill) {
+      input.text = row.fill
+      root.query = row.fill
+      root.rebuild()
+      return
+    }
     var text = root.query.trim()
     root.dismiss()
     if (row.kind === "app")
@@ -300,8 +577,14 @@ Item {
       Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/file-search", text])
     else if (row.kind === "command")
       Quickshell.execDetached(["bash", "-lc", row.command])
+    else if (row.kind === "shell" && row.quiet)
+      Quickshell.execDetached(["bash", "-lc", row.command])
     else if (row.kind === "shell")
       Quickshell.execDetached(["uwsm-app", "--", "alacritty", "--hold", "-e", "bash", "-lc", row.command])
+    else if (row.kind === "ping")
+      Quickshell.execDetached(["uwsm-app", "--", "alacritty", "--hold", "-e", "bash", "-lc", row.command])
+    else if (row.kind === "calc")
+      Quickshell.execDetached(["bash", "-c", "printf %s \"$1\" | wl-copy && notify-send -u low 'Copied' \"$1\"", "--", row.copy])
     else if (row.kind === "web")
       Quickshell.execDetached(["omarchy-launch-browser", "https://duckduckgo.com/?q=" + encodeURIComponent(text)])
   }
@@ -367,7 +650,7 @@ Item {
       property real t: 0
       property real fade: 0
       property var comets: []
-      readonly property var palette: [Commons.Color.accent, Commons.Color.urgent, "#9ece6a", "#bb9af7", "#e0af68", "#7aa2f7", "#73daca"]
+      readonly property var palette: [Commons.Color.accent, Commons.Color.urgent].concat(root.themePalette)
 
       function start() {
         var list = []
@@ -456,12 +739,13 @@ Item {
         z: 10
         property real breath: 0.35
         SequentialAnimation on breath {
-          running: root.opened
+          running: root.opened && root.uiOpt("breathingBorders", true)
           loops: Animation.Infinite
-          NumberAnimation { to: 1; duration: 1700; easing.type: Easing.InOutSine }
-          NumberAnimation { to: 0.35; duration: 1700; easing.type: Easing.InOutSine }
+          NumberAnimation { to: 1; duration: 1700 / Math.max(0.1, root.uiOpt("breathingSpeed", 1)); easing.type: Easing.InOutSine }
+          NumberAnimation { to: 0.35; duration: 1700 / Math.max(0.1, root.uiOpt("breathingSpeed", 1)); easing.type: Easing.InOutSine }
         }
-        opacity: breath
+        // Settings: "breathingBorders" off = a steady border; "breathingSpeed".
+        opacity: root.uiOpt("breathingBorders", true) ? breath : 0.8
         // Repaint when the palette changes (theme switch, ABACABB blood mode).
         property color from: Commons.Color.accent
         property color to: Commons.Color.urgent
@@ -528,7 +812,7 @@ Item {
             focus: true
             text: root.query
             onTextEdited: {
-              if (text.trim().toLowerCase() === "abacabb") {
+              if (text.trim().toLowerCase() === "abacabb" && root.uiOpt("abacabb", true)) {
                 text = ""
                 root.query = ""
                 root.rebuild()
@@ -621,7 +905,7 @@ Item {
 
             Text {
               id: detail
-              visible: !!rowItem.modelData.detail && rowItem.modelData.kind === "command"
+              visible: !!rowItem.modelData.detail && (rowItem.modelData.kind === "command" || rowItem.modelData.kind === "calc" || rowItem.modelData.kind === "ping" || rowItem.modelData.kind === "shell")
               anchors.right: parent.right
               anchors.rightMargin: Style.space(10)
               anchors.verticalCenter: parent.verticalCenter

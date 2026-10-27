@@ -14,12 +14,43 @@ BarWidget {
   id: root
   moduleName: "daa.updates"
 
+  // Desktop UI settings (daa.settings writes ~/.config/omarchy/daa-ui.json;
+  // a missing key means its default, i.e. on).
+  property var ui: ({})
+  function uiOpt(key, fallback) {
+    // Calm mode (power-saver; daa.settings writes ~/.local/state/daa/calm):
+    // the decorative animations pause, whatever their own switches say.
+    if (root.calm && root.calmKeys.indexOf(key) !== -1) return false
+    var v = root.ui ? root.ui[key] : undefined; return v === undefined || v === null ? fallback : v
+  }
+  readonly property var calmKeys: ["goMenuAnimations", "duel", "launcherTrails", "shortcutCardAnimations",
+    "shortcutCardTrails", "workspaceSpring", "magellanic", "breathingBorders", "barAlertPulse"]
+  property bool calm: false
+  FileView {
+    path: Quickshell.env("HOME") + "/.local/state/daa/calm"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.calm = String(text()).trim() === "1"
+    onLoadFailed: root.calm = false
+  }
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/daa-ui.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { root.ui = JSON.parse(text() || "{}") } catch (e) {} }
+    onLoadFailed: root.ui = ({})   // file deleted: all defaults
+  }
+
   property int repo: 0
   property int aur: 0
   readonly property int count: repo + aur
   readonly property color coral: Color.urgent
   // White, or light coral while the ABACABB blood mode (daa.search) is on.
-  readonly property color white: Qt.colorEqual(Color.accent, "#e0607a") ? "#ffb8c6" : "#ffffff"
+  // Light themes get dark tiles/text: the theme's foreground instead of white.
+  readonly property bool lightTheme: 0.299 * Color.background.r + 0.587 * Color.background.g + 0.114 * Color.background.b > 0.5
+  readonly property color white: Qt.colorEqual(Color.accent, "#e0607a") ? "#ffb8c6" : lightTheme ? Color.foreground : "#ffffff"
 
   visible: count > 0
   implicitWidth: visible ? content.implicitWidth : 0
@@ -27,7 +58,8 @@ BarWidget {
 
   property real pulse: 0
   SequentialAnimation on pulse {
-    running: root.count > 30
+    // Settings: "barAlertPulse" off = steady colour.
+    running: root.count > 30 && root.uiOpt("barAlertPulse", true)
     loops: Animation.Infinite
     NumberAnimation { to: 1; duration: 1100; easing.type: Easing.InOutSine }
     NumberAnimation { to: 0; duration: 1100; easing.type: Easing.InOutSine }

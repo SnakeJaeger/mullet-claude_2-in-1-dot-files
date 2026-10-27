@@ -304,3 +304,52 @@ hl.on("workspace.special_active", function(ws)
     "cursor=" .. (pos and (math.floor(pos.x or 0) .. "," .. math.floor(pos.y or 0)) or "?"),
     "panel_open=" .. tostring(panel_open), "grace=" .. tostring(panel_grace))
 end)
+
+-- Hidden dropdowns can't take focus (2026-10-26). On an empty workspace
+-- there's no regular window to park focus on, so closing a bar panel or menu
+-- handed focus back to the last dropdown window and Hyprland flashed its
+-- workspace open (hover-switching between bar menus did it every time).
+-- Windows on a hidden special workspace get no_focus; showing the workspace
+-- clears it and focuses the window there, as Hyprland would have.
+local function set_no_focus(window, on)
+  hl.dispatch(hl.dsp.window.set_prop({ prop = "no_focus", value = on and "1" or "0", window = "address:" .. window.address }))
+end
+
+local function shown_specials()
+  local shown = {}
+  for _, monitor in ipairs(hl.get_monitors()) do
+    local special = monitor.active_special_workspace
+    if special then shown[special.name] = true end
+  end
+  return shown
+end
+
+local function lock_hidden_specials(showing)
+  local shown = shown_specials()
+  if showing then shown[showing] = true end
+  for _, window in ipairs(hl.get_windows()) do
+    if window.workspace and window.workspace.special and not shown[window.workspace.name] then
+      set_no_focus(window, true)
+    end
+  end
+end
+
+hl.on("workspace.special_active", function(ws)
+  -- Showing one special can replace another on the same monitor, so lock
+  -- every hidden one either way.
+  lock_hidden_specials(ws and ws.name)
+  if not (ws and ws.name) then return end
+  local best
+  for _, window in ipairs(hl.get_windows()) do
+    if window.workspace and window.workspace.name == ws.name then
+      set_no_focus(window, false)
+      if window.mapped and (not best or window.focus_history_id < best.focus_history_id) then best = window end
+    end
+  end
+  if best then hl.dispatch(hl.dsp.focus({ window = "address:" .. best.address })) end
+end)
+
+-- Dropdowns preloaded at login open hidden: lock them once they've landed.
+hl.on("window.open", function()
+  hl.timer(function() lock_hidden_specials() end, { timeout = 600, type = "oneshot" })
+end)

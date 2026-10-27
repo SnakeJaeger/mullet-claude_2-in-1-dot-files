@@ -1,0 +1,124 @@
+#!/bin/bash
+# Full-screen terminal shows, Omarchy-screensaver style (any key, a tap or
+# losing focus ends it).
+#   projector matrix   digital rain
+#   projector show     Racing Stripes, then Star Wars (towel.blinkenlights.nl),
+#                      then asciiquarium for as long as nobody touches it
+# Without "run" it opens the full-screen terminal and runs itself inside.
+
+FONT_SIZE=20
+
+if [[ $1 != run ]]; then
+  pgrep -f '[o]rg.omarchy.screensaver' >/dev/null && exit 0
+  exec alacritty --class=org.omarchy.screensaver \
+    --config-file "$OMARCHY_PATH/default/alacritty/screensaver.toml" \
+    -o "font.size=$FONT_SIZE" -e "$0" run "${1:-matrix}"
+fi
+mode=$2
+
+stage_pid=
+finish() {
+  [[ -n $stage_pid ]] && kill "$stage_pid" 2>/dev/null
+  pkill -P $$ 2>/dev/null
+  printf '\033[?1000l\033[?25h'
+  hyprctl eval 'hl.config({ cursor = { invisible = false } })' &>/dev/null
+  exit 0
+}
+trap finish SIGINT SIGTERM SIGHUP SIGQUIT
+
+printf '\033]11;rgb:00/00/00\007'   # black background
+printf '\033[?1000h'                # report taps/clicks as input, so a tap ends it
+hyprctl eval 'hl.config({ cursor = { invisible = true } })' &>/dev/null
+
+# The pty starts at 80x24 until the window is sized.
+deadline=$((SECONDS + 2))
+while ((SECONDS < deadline)) && [[ $(stty size 2>/dev/null) == "24 80" ]]; do sleep 0.02; done
+
+in_focus() { hyprctl activewindow -j | jq -e '.class == "org.omarchy.screensaver"' >/dev/null 2>&1; }
+
+# Run one stage in the background; return when it ends by itself (0) or when
+# someone touches something (finish).
+stage() {
+  "$@" &
+  stage_pid=$!
+  while kill -0 "$stage_pid" 2>/dev/null; do
+    if read -rsn1 -t 0.5 || ! in_focus; then finish; fi
+  done
+  stage_pid=
+}
+
+# Plays an RSMOVIE file (Racing Stripes), centred.
+play_movie() {
+  python3 - "$HOME/racing-stripes/racing-stripes.txt" <<'EOF'
+import os, sys, time
+lines = open(sys.argv[1]).read().split("\n")
+_, _, w, h, tps = lines[0].split(); w, h, tps = int(w), int(h), int(tps)
+rows, cols = os.get_terminal_size(1).lines, os.get_terminal_size(1).columns
+top, left = max(0, (rows - h) // 2), max(0, (cols - w) // 2)
+out = sys.stdout
+out.write("\033[?25l\033[2J")
+i = 1
+while i + h < len(lines):
+    n = int(lines[i]); frame = lines[i + 1:i + 1 + h]; i += h + 1
+    out.write("".join(f"\033[{top + k + 1};{left + 1}H{l}" for k, l in enumerate(frame)))
+    out.flush()
+    time.sleep(n / tps)
+EOF
+}
+
+# Streams towel.blinkenlights.nl's Star Wars, telnet codes stripped, centred
+# (it draws an 80 x 24 telnet screen from ESC[H).
+star_wars() {
+  python3 - <<'EOF'
+import os, socket, sys
+rows, cols = os.get_terminal_size(1).lines, os.get_terminal_size(1).columns
+top, left = max(1, (rows - 24) // 2 + 1), max(1, (cols - 80) // 2 + 1)
+try:
+    s = socket.create_connection(("towel.blinkenlights.nl", 23), timeout=6)
+    s.settimeout(30)
+except OSError:
+    sys.exit(0)
+out = sys.stdout.buffer
+out.write(b"\033[2J"); out.flush()
+buf, iac = b"", 0
+while True:
+    try:
+        data = s.recv(4096)
+    except OSError:
+        break
+    if not data:
+        break
+    clean = bytearray()
+    for b in data:            # drop telnet IAC sequences (FF xx yy)
+        if iac:
+            iac -= 1
+            continue
+        if b == 0xFF:
+            iac = 2
+            continue
+        clean.append(b)
+    buf += bytes(clean)
+    # Hold back a trailing partial escape so it isn't split.
+    cut = buf.rfind(b"\033")
+    if cut != -1 and cut > len(buf) - 4:
+        chunk, buf = buf[:cut], buf[cut:]
+    else:
+        chunk, buf = buf, b""
+    chunk = chunk.replace(b"\033[H", b"\033[%d;%dH" % (top, left)).replace(b"\n", b"\n\033[%dG" % left)
+    out.write(chunk); out.flush()
+EOF
+}
+
+case $mode in
+  matrix)
+    while true; do
+      stage ttfx -i ~/.config/omarchy/branding/screensaver.txt matrix \
+        --canvas-width 0 --canvas-height 0 --anchor-canvas c --anchor-text c --no-eol --no-restore-cursor
+    done ;;
+  show)
+    [[ -f $HOME/racing-stripes/racing-stripes.txt ]] && stage play_movie
+    stage star_wars
+    stage asciiquarium
+    finish ;;
+esac
+finish

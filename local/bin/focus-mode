@@ -1,0 +1,24 @@
+#!/bin/bash
+# Focus mode (SUPER + CTRL + ALT + F, "/focus" in the quick search): hide the
+# bar, turn on Do Not Disturb and dim every window but the focused one. Run
+# again to put things back as they were (the bar and DND only change back if
+# focus mode changed them).
+state=$HOME/.local/state/daa/focus
+mkdir -p "${state%/*}"
+bar_off=$HOME/.local/state/omarchy/toggles/bar-off
+
+if [[ -f $state ]]; then
+  read -r had_bar had_dnd < "$state"
+  rm -f "$state"
+  hyprctl eval 'hl.config({ decoration = { dim_inactive = false } })' >/dev/null
+  [[ $had_bar == shown && -e $bar_off ]] && omarchy-toggle-bar
+  [[ $had_dnd == off ]] && omarchy-shell -q notifications setDnd off
+  notify-send -u low -t 2000 "Focus mode off"
+else
+  had_bar=shown; [[ -e $bar_off ]] && had_bar=hidden
+  had_dnd=$(omarchy-shell notifications dndState 2>/dev/null || echo off)
+  echo "$had_bar $had_dnd" > "$state"
+  [[ $had_bar == shown ]] && omarchy-toggle-bar
+  omarchy-shell -q notifications setDnd on
+  hyprctl eval 'hl.config({ decoration = { dim_inactive = true, dim_strength = 0.45 } })' >/dev/null
+fi

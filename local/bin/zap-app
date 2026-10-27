@@ -1,0 +1,36 @@
+#!/bin/bash
+# Kill every process of the program that owns <pid> (all its windows and
+# helpers): SIGTERM, then SIGKILL whatever is left after 1.5 s. Used by the
+# SUPER + SHIFT + Q scope (daa.zap).
+#   zap-app <pid> [name for the notification]
+pid=$1 name=${2:-}
+[[ $pid =~ ^[0-9]+$ ]] || { echo "usage: zap-app <pid> [name]" >&2; exit 1; }
+
+exe=$(readlink "/proc/$pid/exe" 2>/dev/null)
+comm=$(cat "/proc/$pid/comm" 2>/dev/null)
+[[ -n $exe ]] || { notify-send -u low "Zap" "That window's process is already gone."; exit 1; }
+
+# Never the desktop itself.
+case "${exe##*/}:$comm" in
+  Hyprland:*|*:Hyprland|quickshell:*|*:quickshell|qs:*|*:.quickshell-wra*|systemd:*|uwsm:*|sddm*)
+    notify-send -u normal "Zap" "Not killing ${exe##*/}: the desktop needs it."
+    exit 1 ;;
+esac
+
+# Every process of ours running the same executable.
+pids=()
+for p in /proc/[0-9]*; do
+  p=${p#/proc/}
+  [[ -O /proc/$p ]] || continue
+  [[ $(readlink "/proc/$p/exe" 2>/dev/null) == "$exe" ]] && pids+=("$p")
+done
+((${#pids[@]})) || pids=("$pid")
+
+kill -TERM "${pids[@]}" 2>/dev/null
+sleep 1.5
+left=()
+for p in "${pids[@]}"; do [[ -d /proc/$p ]] && left+=("$p"); done
+((${#left[@]})) && kill -KILL "${left[@]}" 2>/dev/null
+
+label=${name:-${exe##*/}}
+notify-send -u low "Zapped $label" "${#pids[@]} process$( ((${#pids[@]} == 1)) || echo es) ended$( ((${#left[@]})) && echo " (${#left[@]} forced)")."

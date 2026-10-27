@@ -69,9 +69,11 @@ hl.layer_rule({ match = { namespace = "omarchy-menu" }, blur = true, ignore_alph
 -- transparent layer; ignore_alpha keeps the empty rest of it unblurred.
 hl.layer_rule({ match = { namespace = "omarchy-keyboard-panel" }, blur = true, ignore_alpha = 0.1 })
 
--- Cursor: Bibata Modern Ice (installed to ~/.local/share/icons).
+-- Cursor: Bibata Modern Ice (installed to ~/.local/share/icons), unless
+-- Desktop settings → Look picked another (cursor_user.lua).
 hl.env("XCURSOR_THEME", "Bibata-Modern-Ice")
 hl.env("HYPRCURSOR_THEME", "Bibata-Modern-Ice")
+pcall(dofile, (os.getenv("HOME") or "") .. "/.config/hypr/cursor_user.lua")
 
 -- Qt/KDE apps take their style, palette and icons from qt6ct (Omarchy's
 -- default is gtk3, which gives KDE apps little more than light/dark). The
@@ -117,16 +119,73 @@ hl.config({
   },
 })
 
--- Window border: 45deg cyan -> coral gradient (theme accent + theme red).
--- Firefox's selected tab runs the same diagonal the opposite way
--- (~/.config/omarchy/themed/firefox-userChrome.css.tpl).
-hl.config({
-  general = {
-    col = {
-      active_border = { colors = { "rgb(7dcfff)", "rgb(f7768e)" }, angle = 45 },
+-- Window border: 45deg accent -> second-accent gradient: the theme's accent
+-- and red, unless Desktop settings (daa.settings, ~/.config/omarchy/daa-ui.json
+-- "accentColor" / "accent2Color") picks its own. Re-read on every reload, and
+-- a theme switch reloads Hyprland. Firefox's selected tab runs the same
+-- diagonal the opposite way (~/.config/omarchy/themed/firefox-userChrome.css.tpl).
+local function read_file(path)
+  local f = io.open(path, "r")
+  if not f then return "" end
+  local text = f:read("a") or ""
+  f:close()
+  return text
+end
+function daa_accent_colors()
+  local home = os.getenv("HOME") or ""
+  local theme = read_file(home .. "/.local/state/omarchy/current/theme/colors.toml")
+  local ui = read_file(home .. "/.config/omarchy/daa-ui.json")
+  local function theme_color(key, fallback)
+    return theme:match("\n%s*" .. key .. "%s*=%s*[\"']#(%x%x%x%x%x%x)") or theme:match("^%s*" .. key .. "%s*=%s*[\"']#(%x%x%x%x%x%x)") or fallback
+  end
+  local function ui_color(key)
+    return ui:match('"' .. key .. '"%s*:%s*"#(%x%x%x%x%x%x)"')
+  end
+  local a = ui_color("accentColor") or theme_color("accent", theme_color("color4", "7dcfff"))
+  local b = ui_color("accent2Color") or theme_color("red", theme_color("color1", "f7768e"))
+  return a:lower(), b:lower()
+end
+do
+  local a, b = daa_accent_colors()
+  hl.config({
+    general = {
+      col = {
+        active_border = { colors = { "rgb(" .. a .. ")", "rgb(" .. b .. ")" }, angle = 45 },
+      },
     },
-  },
-})
+  })
+end
 
 -- GNOME Weather (SUPER+ALT+W / bar weather click): borderless.
 o.window("^org.gnome.Weather$", { border_size = 0 })
+
+-- Desktop settings (daa.settings, ~/.config/omarchy/daa-ui.json) can override
+-- the gaps, border width and rounding above: "windowGapsIn", "windowGapsOut",
+-- "windowBorder", "windowRounding" (px). Applied on every reload, and live by
+-- the settings panel through this global.
+function daa_apply_window_settings()
+  local f = io.open((os.getenv("HOME") or "") .. "/.config/omarchy/daa-ui.json", "r")
+  local ui = f and f:read("a") or ""
+  if f then f:close() end
+  local function num(key)
+    local v = ui:match('"' .. key .. '"%s*:%s*(%-?[%d%.]+)')
+    return v and math.floor(tonumber(v) + 0.5) or nil
+  end
+  local gin, gout, border, round = num("windowGapsIn"), num("windowGapsOut"), num("windowBorder"), num("windowRounding")
+  -- Back to this file's values when a key is cleared (Reset all).
+  gin = gin or 5
+  border = border or 1
+  round = round or 6
+  -- Top stays 4px tighter than the other sides (see the gaps_out note above).
+  local out = gout and { top = math.max(0, gout - 4), right = gout, bottom = gout, left = gout }
+    or { top = 6, right = 10, bottom = 10, left = 10 }
+  hl.config({
+    general = { gaps_in = gin, gaps_out = out, border_size = border },
+    decoration = { rounding = round },
+  })
+end
+daa_apply_window_settings()
+
+-- daa.termshade (the band darkening the top of the Claude dropdown) sits
+-- under the bar: same Top layer, lower order.
+hl.layer_rule({ match = { namespace = "daa-termshade" }, order = -1 })

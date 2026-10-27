@@ -60,6 +60,16 @@ Lua config.
 | <img src="screenshots/desktop-27-notifications.webp" alt="Notifications bottom-right with a countdown border"><br>Notifications: bottom-right, × to dismiss, countdown border | <img src="screenshots/desktop-28-wallpaper-picker.webp" alt="Wallpaper picker with the double-click toggle"><br>Wallpaper picker: added two-finger scrolling and and toggle for double click desktop activation| <img src="screenshots/desktop-29-konami-comets.webp" alt="The Konami code typed into the quick search sets off a comet storm across the screen"><br>KC4C search menu (tap `SUPER`)<br>*"A bloody good time."* — raves Basil Fawlty<br> |  
 
 
+### New: the greeter, the settings hub and friends
+
+| | |
+|---|---|
+| <img src="screenshots/tablet-11-greeter.webp" alt="Tablet greeter: Windows Phone style tiles in the Omarchy logo frame"><br>Tablet greeter: fold back and pick what you came to do. **Continue** tiles pick up the last book, comic or drawing | <img src="screenshots/desktop-31-settings-tablet.webp" alt="Settings, Tablet page: greeter tiles, tablet colour and wallpaper"><br>Settings → Tablet: greeter tiles, tablet colour and wallpaper, bar style and size, text size |
+| <img src="screenshots/desktop-30-settings-hub.webp" alt="Settings hub home: search, categories and device settings apps"><br>Settings hub (Go menu → **Settings**): search every setting; device settings apps by category | <img src="screenshots/desktop-32-apps-overview.webp" alt="Apps overview: every open app by workspace with live previews"><br>Apps overview (`SUPER + TAB`, or three fingers up): drag a card to move it, × to close |
+| <img src="screenshots/desktop-33-gestures-button.webp" alt="Keybinds panel with the Gestures button, comets lapping it"><br>Keybinds panel: **Gestures** lists every swipe; two comets lap the button as it opens | <img src="screenshots/desktop-34-power-bar.webp" alt="Power bar across the middle of the dimmed screen"><br>Power bar (`SUPER + ESC`): one letter each, S L R O D |
+| <img src="screenshots/desktop-35-zap.webp" alt="Zap scope over a terminal: kill Alacritty, all 3 windows"><br>Zap (`SUPER + SHIFT + Q`): click a window to end every window of that program |  |
+
+---
 
 ## Repo layout
 
@@ -351,6 +361,35 @@ group's tab instead (Omarchy's own use of them).
 
 ---
 
+### Settings hub, apps overview, power bar and zap
+- **Settings hub** (`daa.settings`; Go menu footer **Settings**, `SUPER + CTRL + ALT + S`,
+  `/settings` in the quick search). A sidebar of pages (themes and colours,
+  motion, top bar, logo card, **tablet**, windows, rules, dropdowns, keys, Go
+  menu, device settings, notifications, power, startup, login, backups, lab)
+  with a Home page that searches every setting. Every animation has a switch,
+  most have a speed slider. Writes `~/.config/omarchy/daa-ui.json`; plugins
+  watch it, so changes apply live. A close button; clicks outside don't close it.
+- **Apps overview** (`daa.overview`, `SUPER + TAB`, three fingers up on the
+  touchpad or screen, or a corner swipe in tablet mode). Every open app
+  except dropdowns, one row per workspace with a live preview. Tap to go
+  there, × to close, drag a card onto another row (or "new workspace") to move it.
+- **Gestures in the Keybinds panel.** Go menu → **Keybinds** → **Gestures**
+  swaps the key list for every touchpad and touchscreen swipe; tap one to run it.
+- **Power bar** (`daa.powerbar`, `SUPER + ESC`): a bar across the dimmed
+  screen, one highlighted letter per action: **S**creensaver, **L**ock,
+  **R**eboot, Log**o**ut, Shut**d**own.
+- **Zap** (`daa.zap`, `SUPER + SHIFT + Q`): a scope; click a window and every
+  process of that program ends (TERM, then KILL). Right click or Esc cancels.
+- **Menu keys play nicely.** `SUPER` closes the Go menu, and any menu key
+  (`SUPER + SPACE`…) puts away the quick search, settings, overview or
+  launcher first instead of stacking on top.
+- **Refresh buttons** on the Wi-Fi and Bluetooth popups.
+- **Lab card comets.** A comet runs the heartbeat line with each Tailscale
+  ping; the lab going down or coming back sends two round the card. The Go
+  menu's Apps / Keybinds / Tablet buttons send comets up the panel they open.
+
+---
+
 ## Tablet mode
 
 Folding the screen past 180° flips the **Lenovo Yoga Tablet Mode Control
@@ -370,6 +409,26 @@ same script backs the tablet menu and buttons.
   notifications.
 - Switches to the **tablet wallpaper**. Each mode remembers its own
   wallpaper: whatever you pick while in a mode sticks to that mode.
+- Opens the **greeter** (below).
+
+### The greeter (`daa.tablet-greeter`)
+Folding back usually means you're about to watch, read, draw or play, so
+tablet mode opens on big Windows Phone style tiles in the tablet colour,
+inside the launcher's Omarchy-logo frame with its comets. Small, wide and
+large tiles; a live clock and battery tile; tiles swing in like a turnstile
+and tilt under your finger.
+- **Continue tiles** (`~/.local/bin/tablet-continue`) come first: the last
+  book or comic in Foliate, the last comic in Komikku, the last Krita /
+  Rnote / Xournal++ file (with its thumbnail and a progress line). Optionally
+  Jellyfin's "continue watching": put `JELLYFIN_URL`, `JELLYFIN_KEY` and
+  `JELLYFIN_USER` in `~/.local/share/daa/jellyfin.env`.
+- Easy to get rid of: tap outside, the big ×, **Not now**, or Esc. Touches
+  are ignored for a moment after folding so the hands doing the folding
+  don't dismiss it.
+- Reopen it from the Omarchy logo on the tablet bar or the tablet menu.
+- **Settings → Tablet** edits the tiles (order, size, add any app),
+  background opacity, tile colours and icons, tablet colour and wallpaper,
+  tablet bar style (solid, floating, glass, clear) and size, and text size.
 
 Unfolding puts everything back exactly as it was.
 
@@ -381,7 +440,8 @@ Unfolding puts everything back exactly as it was.
 | Workspace number | Workspace and window switcher (close windows with ✕, hide scratchpads) | |
 | Keyboard | Show / hide the on-screen keyboard | |
 | Rotate | Toggle the rotation lock (stays coral while locked) | Pick an orientation |
-| Quick toggles | Screenshot, Screenshot area, **Wallpaper**, Do not disturb, Night light, Stay awake, Recording, Reminders | |
+| Omarchy logo | The greeter | |
+| Quick toggles (sliders icon) | Screenshot, Screenshot area, **Wallpaper**, Do not disturb, Night light, Stay awake, Recording, Reminders | |
 | Play / pause | Media | |
 
 - Buttons light up when tapped and fade back after about a second, since a
@@ -397,13 +457,21 @@ Unfolding puts everything back exactly as it was.
 | Swipe up from the bottom edge | On-screen keyboard |
 | Swipe in from the left edge | App launcher |
 | Swipe in from the right edge | Close the focused window |
-| Three-finger swipe left / right | Next / previous workspace |
+| Diagonal swipe in from any corner | Apps overview |
+| Three or four fingers left / right | Next / previous workspace |
+| Three fingers up / down | Apps overview / hide dropdowns |
+| Four fingers up / down | App grid / close the focused window |
+
+The finger swipes work on the touchpad too (`~/.config/hypr/input.lua`), and
+on the screen in laptop mode as well (`tablet-mode gestures` runs lisgd from
+login; the edge and corner swipes are tablet-only).
 
 ### Tap the wallpaper to tidy up
 A single tap on empty wallpaper (`daa.background`) runs `tablet-mode dismiss`.
 That hides the keyboard, scratchpads, menus, launchers, bar popups and the
-tray drawer. In tablet mode, double-tapping the wallpaper no longer opens the
-wallpaper picker; use the Quick toggles button instead.
+tray drawer. In tablet mode, double-tapping the wallpaper opens the wallpaper picker
+only if its **Double-tap in tablet mode** switch is on. The picker also has
+an **aether** link in the corner.
 
 ### Reading
 Papers for PDFs, Foliate for EPUB and comics, Komikku as a comic library,

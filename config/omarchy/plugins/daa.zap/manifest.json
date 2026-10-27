@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "daa.zap",
+  "name": "Zap",
+  "version": "1.0.0",
+  "author": "daa",
+  "description": "SUPER + SHIFT + Q: a scope; click a window to kill every process of its program",
+  "kinds": [
+    "menu"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "Zap.qml"
+  }
+}

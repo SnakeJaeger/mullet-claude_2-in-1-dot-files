@@ -10,6 +10,35 @@ import "MenuModel.js" as MenuModel
 Item {
   id: root
 
+  // Desktop UI settings (daa.settings writes ~/.config/omarchy/daa-ui.json;
+  // a missing key means its default, i.e. on).
+  property var ui: ({})
+  function uiOpt(key, fallback) {
+    // Calm mode (power-saver; daa.settings writes ~/.local/state/daa/calm):
+    // the decorative animations pause, whatever their own switches say.
+    if (root.calm && root.calmKeys.indexOf(key) !== -1) return false
+    var v = root.ui ? root.ui[key] : undefined; return v === undefined || v === null ? fallback : v
+  }
+  readonly property var calmKeys: ["goMenuAnimations", "duel", "launcherTrails", "shortcutCardAnimations",
+    "shortcutCardTrails", "workspaceSpring", "magellanic", "breathingBorders", "barAlertPulse"]
+  property bool calm: false
+  FileView {
+    path: Quickshell.env("HOME") + "/.local/state/daa/calm"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.calm = String(text()).trim() === "1"
+    onLoadFailed: root.calm = false
+  }
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/daa-ui.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { root.ui = JSON.parse(text() || "{}") } catch (e) {} }
+    onLoadFailed: root.ui = ({})   // file deleted: all defaults
+  }
+
   // Injected by omarchy-shell when this plugin is summoned.
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property var shell: null
@@ -55,6 +84,18 @@ Item {
     printErrors: false
   }
   function writeOpenedAs() { openedAsFile.setText(root.opened ? root.openedAs : "") }
+  // A SUPER press closes the menu (it holds the keyboard, so SUPER binds would
+  // otherwise land here). What it closed goes in this file so the SUPER+key
+  // that follows doesn't toggle the same menu straight back open (menu-toggle).
+  FileView {
+    id: superClosedFile
+    path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/omarchy-menu-superclosed"
+    printErrors: false
+  }
+  function closeForSuper() {
+    superClosedFile.setText(root.openedAs + "\t" + Date.now())
+    root.cancel()
+  }
   onOpenedAsChanged: writeOpenedAs()
   // SUPER+K (menu-toggle go:keys) closes the menu only while the Keybinds
   // panel is what's showing, however it got there (SUPER+K, Tab, a click).
@@ -166,7 +207,8 @@ Item {
   // apps Nerd Fonts has no icon for; it's recoloured like the glyphs.
   // Mullvad opens the SUPER+M dropdown (status + menu, mullvad-tui). Remmina's
   // own window is a tile on the server card (ServerCard.qml).
-  readonly property var sidebarMiddle: root.guestMode ? [
+  readonly property var sidebarMiddle: sidebarMiddleAll.filter(function(i) { return (root.uiOpt("goSidebarHidden", []) || []).indexOf(i.label) === -1 })
+  readonly property var sidebarMiddleAll: root.guestMode ? [
     { icon: "\uf120", label: "Terminal", command: "hyprctl eval 'dropdown_show(\"terminal\")'" },
     { image: "gns3.svg", label: "GNS3", command: "uwsm-app -- ~/.local/bin/gns3" },
     { image: "tailscale.svg", label: "Tailscale", command: "~/.local/bin/tailscale-toggle" },
@@ -271,7 +313,13 @@ Item {
   readonly property int goDashGap: Style.space(12)
   readonly property int phoneCardHeight: Style.space(118)
   readonly property int serverCardHeight: Style.space(100)
-  readonly property int goDashHeight: root.statsCardHeight + root.labCardHeight + root.serverCardHeight + root.phoneCardHeight + root.contentSpacing * 3
+  readonly property int goDashHeight: {
+    var parts = [[root.statsCardHeight, "goCardStats"], [root.labCardHeight, "goCardLab"],
+                 [root.serverCardHeight, "goCardServer"], [root.phoneCardHeight, "goCardPhone"]]
+    var h = 0, n = 0
+    for (var i = 0; i < parts.length; i++) if (root.uiOpt(parts[i][1], true)) { h += parts[i][0]; n++ }
+    return h + root.contentSpacing * Math.max(0, n - 1)
+  }
   readonly property int goFooterHeight: root.showGoFooter ? root.goFooterButtonHeight + Math.round(root.contentSpacing * 1.5) : 0
   // Apps panel: the footer's Apps button swaps the Go list and dash for an
   // app grid in the same space ("Go…" stays; Install / Remove / Update sit
@@ -416,7 +464,7 @@ Item {
   // "omarchy" is a real search: it finds Omarchy's own page).
   property bool duelOn: false
   // ABACABB blood mode (daa.search) is on: the accent is its coral. Then the
-  // duel always shows and ends after 3 s in a (bloodless) beheading.
+  // duel always shows; after 3 s the first clean upper-body hit ends it in a (bloodless) beheading.
   readonly property bool bloodMode: Qt.colorEqual(Commons.Color.accent, "#e0607a")
 
   property bool goApps: false
@@ -439,17 +487,40 @@ Item {
       for (var i = 0; i < lines.length; i++) {
         var parts = String(lines[i]).split("→")
         if (parts.length < 2) continue
-        rows.push({ keys: parts[0].trim(), desc: parts.slice(1).join("→").trim(), line: String(lines[i]) })
+        rows.push({ keys: parts[0].trim(), desc: parts.slice(1).join("→").trim(), line: String(lines[i]), cmd: "" })
       }
       root.allKeys = rows
       root.rebuildKeys()
     }
   }
+  // The panel's Gestures button swaps the list for the touchpad / touchscreen
+  // gestures (finger swipes work on both; "(tablet)" ones on the screen in
+  // tablet mode only) (hypr/input.lua, ~/.config/tablet-mode/gestures). A click runs
+  // the gesture's action where it has one.
+  property bool keysGestures: false
+  readonly property string tabletTool: Quickshell.env("HOME") + "/.local/bin/tablet-mode"
+  readonly property var gestureRows: [
+    { keys: "3 FINGERS  ← →", desc: "Previous / next workspace", line: "", cmd: "" },
+    { keys: "3 FINGERS  ↑", desc: "Apps overview (SUPER + TAB)", line: "", cmd: "omarchy-shell shell toggle daa.overview" },
+    { keys: "3 FINGERS  ↓", desc: "Hide dropdowns", line: "", cmd: root.tabletTool + " hide-scratchpads" },
+    { keys: "4 FINGERS  ← →", desc: "Previous / next workspace", line: "", cmd: "" },
+    { keys: "4 FINGERS  ↑", desc: "App grid (SUPER + R)", line: "", cmd: "omarchy-shell shell toggle daa.launcher" },
+    { keys: "4 FINGERS  ↓", desc: "Close window", line: "", cmd: "" },
+    { keys: "5 FINGERS  ↑ ↓", desc: "T-flix n chill", line: "", cmd: Quickshell.env("HOME") + "/.local/bin/projector show" },
+    { keys: "EDGE  TOP ↓", desc: "Tablet menu (tablet)", line: "", cmd: "omarchy menu summon tablet" },
+    { keys: "EDGE  BOTTOM ↑", desc: "Keyboard (tablet)", line: "", cmd: "" },
+    { keys: "EDGE  LEFT →", desc: "App grid (tablet)", line: "", cmd: "omarchy-shell shell toggle daa.launcher" },
+    { keys: "EDGE  RIGHT ←", desc: "Close window (tablet)", line: "", cmd: "" },
+    { keys: "CORNER  ↘ ↙ ↗ ↖", desc: "Apps overview (tablet)", line: "", cmd: "omarchy-shell shell toggle daa.overview" },
+    { keys: "DOUBLE TAP  WALLPAPER", desc: "Wallpaper picker", line: "", cmd: "" },
+    { keys: "FOLD BACK", desc: "Tablet mode + greeter", line: "", cmd: "" }
+  ]
   function rebuildKeys() {
     keysModel.clear()
     var q = String(root.filterText || "").trim().toLowerCase()
-    for (var i = 0; i < root.allKeys.length; i++) {
-      var row = root.allKeys[i]
+    var source = root.keysGestures ? root.gestureRows : root.allKeys
+    for (var i = 0; i < source.length; i++) {
+      var row = source[i]
       if (q && (row.keys + " " + row.desc).toLowerCase().indexOf(q) === -1) continue
       keysModel.append(row)
     }
@@ -460,8 +531,13 @@ Item {
     if (on) {
       root.goApps = false
       root.filterText = ""
+      root.keysGestures = false
       if (!keysProc.running) keysProc.running = true
     }
+  }
+  function setKeysGestures(on) {
+    root.keysGestures = on
+    root.rebuildKeys()
   }
   function closeGoPanel() {
     if (root.goApps) root.setGoApps(false)
@@ -635,13 +711,19 @@ Item {
     return true
   }
 
-  readonly property var goFooterItems: [
+  // Footer buttons and Network sidebar buttons can be hidden in Desktop
+  // settings → Go menu (goFooterHidden / goSidebarHidden: labels).
+  readonly property var goFooterItems: goFooterAll.filter(function(i) { return (root.uiOpt("goFooterHidden", []) || []).indexOf(i.label) === -1 })
+  readonly property var goFooterAll: [
     { icon: "󰀻", label: "Apps", apps: true },
-    // Right click opens the keybindings file in Sublime Text.
+    // Right click opens Desktop settings → Keys (change any binding there).
     { icon: "󰌌", label: "Keybinds", keys: true,
-      rightCommand: "uwsm-app -- subl ~/.config/hypr/bindings.lua" },
+      rightCommand: "omarchy-shell shell summon daa.settings '{\"page\":\"keys\"}'" },
     { icon: "󰓶", label: "Tablet", target: "tablet" },
-    { icon: "󰐥", label: "System", target: "system" }
+    // The settings hub (daa.settings).
+    { icon: "󰒓", label: "Settings", command: "omarchy-shell shell toggle daa.settings" },
+    // System opens the power bar (SUPER + ESC); right click, the old list.
+    { icon: "󰐥", label: "System", command: "omarchy-shell shell toggle daa.powerbar", rightTarget: "system" }
   ]
   readonly property var goHiddenRows: ["apps", "tablet", "system", "about"]
   // The Go menu sits at the left screen edge, so its sidebar goes on the
@@ -1722,7 +1804,25 @@ Item {
       if (midScreen || systemMenu) slideIn.begin()
       else card.slide = 0
       if (root.goLayout && root.eggPending) { root.eggPending = false; eggAnim.restart() }
-      else if (root.goLayout) { swingIn.restart(); goDash.bounceIn(); goFooter.deal(); slinkAnim.restart(); root.duelOn = root.bloodMode || Math.random() < 1 / 12 }
+      else if (root.goLayout) {
+        // Settings: "goMenuStyle" = swing (default) / slide / fade / off for
+        // the card; "goMenuAnimations" off = no bouncing cards, slinky or
+        // dealt footer (their rest states are the finished ones); "duel" off
+        // = no duel.
+        var style = root.uiOpt("goMenuStyle", "swing")
+        swingIn.stop(); fadeIn.stop(); goSlideIn.stop()
+        card.swing = 1; card.goFade = 1; card.goSlide = 0
+        if (style === "swing") swingIn.restart()
+        else if (style === "fade") fadeIn.restart()
+        else if (style === "slide") goSlideIn.restart()
+        if (root.uiOpt("goMenuAnimations", true)) { goDash.bounceIn(); goFooter.deal(); slinkAnim.restart() }
+        else {
+          // Stop any still running from the last open, at their rest states.
+          slinkAnim.stop(); dealAnim.stop()
+          root.slinkMs = -1; goFooter.dealClock = 1
+        }
+        root.duelOn = root.uiOpt("duel", true) && (root.bloodMode || Math.random() < 1 / 12)
+      }
       else card.swing = 1
     }
 
@@ -1766,7 +1866,11 @@ Item {
       // pivoting on its top-left corner it rotates down from -16° while it
       // unfolds from 55% height, overshooting a touch before it settles.
       property real swing: 1
-      opacity: Math.min(1, swing * 2.5)
+      // Other entrances (settings "goMenuStyle"): fade in, or slide in from
+      // the left edge.
+      property real goFade: 1
+      property real goSlide: 0
+      opacity: Math.min(1, swing * 2.5) * goFade
       // Easter egg: eggTilt carries the swing on past rest until the bottom-left
       // corner meets the screen edge; then the hinge snaps and eggNow (from
       // root.eggCard) spins the card about its centre and moves it.
@@ -1779,7 +1883,7 @@ Item {
           origin.y: card.height / 2
           angle: card.eggNow ? card.eggNow.a - root.eggTheta0 : 0
         },
-        Translate { x: card.slide * (panel.systemMenu || panel.midScreen ? -(card.x + card.width) : panel.width - card.x) },
+        Translate { x: card.slide * (panel.systemMenu || panel.midScreen ? -(card.x + card.width) : panel.width - card.x) - card.goSlide * (card.x + card.width) },
         Scale { origin.x: 0; origin.y: 0; xScale: 0.92 + 0.08 * card.swing; yScale: 0.55 + 0.45 * card.swing },
         Rotation { origin.x: 0; origin.y: 0; angle: (card.swing - 1) * 16 + card.eggTilt },
         Translate {
@@ -1838,6 +1942,22 @@ Item {
         duration: 1900
         onStopped: root.slinkMs = -1
       }
+      NumberAnimation on goFade {
+        id: fadeIn
+        running: false
+        from: 0
+        to: 1
+        duration: 220
+        easing.type: Easing.OutQuad
+      }
+      NumberAnimation on goSlide {
+        id: goSlideIn
+        running: false
+        from: 1
+        to: 0
+        duration: 360
+        easing.type: Easing.OutQuint
+      }
       NumberAnimation on swing {
         id: swingIn
         running: false
@@ -1877,6 +1997,11 @@ Item {
         Keys.onPressed: function(event) {
           // Easter egg: keys pressed mid-fall mustn't type into the search.
           if (root.egging) { event.accepted = true; return }
+          if ((event.key === Qt.Key_Super_L || event.key === Qt.Key_Super_R || event.key === Qt.Key_Meta) && !event.isAutoRepeat) {
+            root.closeForSuper()
+            event.accepted = true
+            return
+          }
           if (root.deleteConfirmOpen) {
             if (deleteConfirm.handleKey(event)) event.accepted = true
             return
@@ -2144,6 +2269,8 @@ Item {
 
         Loader {
           id: statsCard
+          // Desktop settings → Go menu can switch each card off.
+          visible: root.uiOpt("goCardStats", true)
           active: root.showGoDash
           width: parent.width
           property real shove: 0
@@ -2180,6 +2307,7 @@ Item {
 
         Loader {
           id: labCard
+          visible: root.uiOpt("goCardLab", true)
           // Always loaded so it keeps sampling pings while the menu is closed.
           active: true
           width: parent.width
@@ -2216,6 +2344,7 @@ Item {
         // Self-hosted services on the lab box (ServerCard.qml, via ~/.local/bin/server-status).
         Loader {
           id: serverCard
+          visible: root.uiOpt("goCardServer", true)
           active: root.showGoDash
           enabled: !root.guestMode
           width: parent.width
@@ -2261,6 +2390,7 @@ Item {
         // KDE Connect phone (PhoneCard.qml, via ~/.local/bin/phone-status).
         Loader {
           id: phoneCard
+          visible: root.uiOpt("goCardPhone", true)
           active: root.showGoDash
           enabled: !root.guestMode
           width: parent.width
@@ -2569,6 +2699,7 @@ Item {
             required property string keys
             required property string desc
             required property string line
+            required property string cmd
             required property int index
             width: keysList.width
             height: Style.font.body + Style.space(14)
@@ -2600,14 +2731,27 @@ Item {
               font.pixelSize: Style.font.body
               elide: Text.ElideRight
             }
-            // Click runs the binding, like picking it in SUPER+K.
+            // Click runs the binding, like picking it in SUPER+K; right click
+            // opens it in Desktop settings → Keys to change it.
             MouseArea {
               id: keyRowArea
               anchors.fill: parent
               hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onClicked: {
+              cursorShape: root.keysGestures && !keyRow.cmd ? Qt.ArrowCursor : Qt.PointingHandCursor
+              acceptedButtons: Qt.LeftButton | Qt.RightButton
+              onClicked: function(mouse) {
+                if (root.keysGestures) {
+                  if (!keyRow.cmd || mouse.button !== Qt.LeftButton) return
+                  root.cancel()
+                  Quickshell.execDetached(["bash", "-c", keyRow.cmd])
+                  return
+                }
                 root.cancel()
+                if (mouse.button === Qt.RightButton) {
+                  Quickshell.execDetached(["omarchy-shell", "shell", "summon", "daa.settings",
+                    JSON.stringify({ page: "keys", filter: keyRow.desc })])
+                  return
+                }
                 Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/keybind-run", keyRow.line])
               }
             }
@@ -2615,6 +2759,109 @@ Item {
         }
 
         TouchScroll { anchors.fill: keysList; view: keysList }
+
+        // Gestures / Keys switch, bottom right over the list. Two comets ride
+        // three quarters of the way round it whenever the panel opens or the
+        // list switches, then fade.
+        Rectangle {
+          id: gestureButton
+          anchors.right: keysList.right
+          anchors.bottom: keysList.bottom
+          anchors.margins: Style.space(10)
+          width: Math.max(gestureLabel.implicitWidth + Style.space(34), keysList.width * 0.4)
+          height: Style.space(34)
+          radius: height / 2
+          color: gestureArea.containsMouse ? Qt.rgba(root.background.r, root.background.g, root.background.b, 1)
+            : Qt.rgba(root.background.r, root.background.g, root.background.b, 0.92)
+          border.width: 1
+          border.color: gestureArea.containsMouse ? keysPanel.accent : Util.alpha(root.foreground, 0.18)
+          Row {
+            id: gestureLabel
+            anchors.centerIn: parent
+            spacing: Style.space(7)
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.keysGestures ? "󰌌" : "󰆽"
+              color: keysPanel.accent
+              font.family: Style.font.family
+              font.pixelSize: Style.font.body
+            }
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.keysGestures ? "Keys" : "Gestures"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+          }
+          MouseArea {
+            id: gestureArea
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: { root.setKeysGestures(!root.keysGestures); gestureComets.start() }
+          }
+
+          Canvas {
+            id: gestureComets
+            anchors.fill: parent
+            anchors.margins: -Style.space(3)
+            property real t: -1
+            readonly property real dur: 1.25
+            function start() { t = 0; requestPaint() }
+            Connections {
+              target: keysPanel
+              function onVisibleChanged() { if (keysPanel.visible) gestureComets.start() }
+            }
+            FrameAnimation {
+              running: gestureComets.t >= 0
+              onTriggered: {
+                gestureComets.t += frameTime
+                if (gestureComets.t > gestureComets.dur + 0.4) gestureComets.t = -1
+                gestureComets.requestPaint()
+              }
+            }
+            // A point on the stadium outline, s along it clockwise from top centre.
+            function at(s) {
+              var w = width, h = height, r = h / 2, line = w - 2 * r
+              var P = 2 * line + 2 * Math.PI * r
+              s = ((s % P) + P) % P
+              var half = line / 2
+              if (s < half) return { x: w / 2 + s, y: 0 }
+              s -= half
+              if (s < Math.PI * r) { var a = -Math.PI / 2 + s / r; return { x: w - r + r * Math.cos(a), y: r + r * Math.sin(a) } }
+              s -= Math.PI * r
+              if (s < line) return { x: w - r - s, y: h }
+              s -= line
+              if (s < Math.PI * r) { var b = Math.PI / 2 + s / r; return { x: r + r * Math.cos(b), y: r + r * Math.sin(b) } }
+              s -= Math.PI * r
+              return { x: r + s, y: 0 }
+            }
+            onPaint: {
+              var ctx = getContext("2d")
+              ctx.reset()
+              if (t < 0) return
+              var r = height / 2, P = 2 * (width - 2 * r) + 2 * Math.PI * r
+              var k = Math.min(1, t / dur)
+              var head = (1 - Math.pow(1 - k, 3)) * P * 0.75
+              var fade = Math.min(1, t / 0.15) * Math.max(0, 1 - Math.max(0, t - dur * 0.75) / (dur * 0.25 + 0.4))
+              var trail = Math.min(head, P * 0.22), steps = 22
+              var cols = [keysPanel.accent, Commons.Color.urgent]
+              ctx.lineCap = "round"
+              for (var c = 0; c < 2; c++) {
+                var base = c * P / 2, col = cols[c]
+                for (var i = 0; i < steps; i++) {
+                  var a0 = i / steps, a1 = (i + 1) / steps
+                  var p0 = at(base + head - a0 * trail), p1 = at(base + head - a1 * trail)
+                  var alpha = fade * Math.pow(1 - a0, 1.6)
+                  ctx.strokeStyle = i < 2 ? Qt.rgba(1, 1, 1, alpha) : Qt.rgba(col.r, col.g, col.b, alpha)
+                  ctx.lineWidth = 2.5 * (1 - a0) + 0.8
+                  ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke()
+                }
+              }
+            }
+          }
+        }
 
         Item {
           id: keysScroll
@@ -2724,7 +2971,20 @@ Item {
           st.time += dt
           if (st.blood) {
             st.nextKill = 99
-            if (st.finT < 0 && st.time >= st.finAt) { st.finT = 0; st.cxTarget = st.cx; st.A.atkT = -1; st.B.atkT = -1; st.A.attack = 0; st.B.attack = 0 }
+            // After 3 s it's live: the first thrust that lands at chest or
+            // head height (stance mid/high) without meeting the other blade
+            // (same stance = parried) takes the head. They close in so it
+            // comes quickly.
+            if (st.finT < 0 && st.time >= st.finAt) {
+              if (st.gapTarget > 28) st.gapTarget = duel.rnd(22, 28)
+              var landsA = st.A.atkT >= 0.12 && st.A.lvl >= 0 && st.B.lvl !== st.A.lvl
+              var landsB = st.B.atkT >= 0.12 && st.B.lvl >= 0 && st.A.lvl !== st.B.lvl
+              if (landsA || landsB) {
+                st.loserA = landsA && landsB ? Math.random() < 0.5 : landsB
+                st.finT = 0; st.cxTarget = st.cx
+                st.A.atkT = -1; st.B.atkT = -1; st.A.attack = 0; st.B.attack = 0
+              }
+            }
             if (st.finT >= 0) { duel.stepFinale(st, dt); return }
           }
           var fighting = st.killT < 0
@@ -2802,8 +3062,8 @@ Item {
         }
 
         readonly property color ink: root.foreground
-        readonly property color blueBlade: "#7dcfff"
-        readonly property color coralBlade: "#f7768e"
+        readonly property color blueBlade: Commons.Color.accent
+        readonly property color coralBlade: Commons.Color.urgent
 
         // 0..1 bump centred on c with half-width w.
         function bump(p, c, w) { var d = Math.abs(p - c); return d >= w ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * d / w) }
@@ -2984,6 +3244,69 @@ Item {
         }
       }
 
+      // Footer comets: a button that opens something in the menu (Apps,
+      // Keybinds, Tablet) sends two comets out along the divider and up both
+      // sides of the space it fills.
+      Canvas {
+        id: footComets
+        visible: root.showGoFooter
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: card.contentLeftInset + (root.showSidebar && root.sidebarLeft ? root.sidebarWidth + Style.space(12) : 0)
+        anchors.rightMargin: card.contentRightInset
+        anchors.topMargin: card.contentTopInset + root.headerHeight + root.contentSpacing
+        anchors.bottomMargin: card.contentBottomInset + root.goFooterButtonHeight + Math.round(root.contentSpacing / 2)
+        z: 50
+        property real t: -1
+        property real fromX: 0
+        readonly property real dur: 0.8
+        function launch(index) {
+          fromX = (index + 0.5) * width / Math.max(1, root.goFooterItems.length)
+          t = 0
+          requestPaint()
+        }
+        FrameAnimation {
+          running: footComets.t >= 0
+          onTriggered: {
+            footComets.t += frameTime
+            if (footComets.t > footComets.dur + 0.35) footComets.t = -1
+            footComets.requestPaint()
+          }
+        }
+        onPaint: {
+          var ctx = getContext("2d")
+          ctx.reset()
+          if (t < 0) return
+          var W = width, H = height, inset = 1
+          // Path for one side: along the divider to the edge, then up it.
+          function at(dir, d) {
+            var edge = dir < 0 ? inset : W - inset
+            var run = Math.abs(edge - fromX)
+            if (d <= run) return { x: fromX + dir * d, y: H }
+            return { x: edge, y: Math.max(0, H - (d - run)) }
+          }
+          var k = Math.min(1, t / dur), ease = 1 - Math.pow(1 - k, 3)
+          var fade = Math.min(1, t / 0.08) * Math.max(0, 1 - Math.max(0, t - dur * 0.65) / (dur * 0.35 + 0.35))
+          var cols = [Commons.Color.pick("tablet.accent", Commons.Color.accent), Commons.Color.urgent]
+          ctx.lineCap = "round"
+          for (var c = 0; c < 2; c++) {
+            var dir = c ? 1 : -1
+            var total = Math.abs((dir < 0 ? inset : W - inset) - fromX) + H
+            var head = ease * total, trail = Math.min(head, Style.space(140)), steps = 22
+            var col = cols[c]
+            for (var i = 0; i < steps; i++) {
+              var p0 = at(dir, head - trail * i / steps), p1 = at(dir, head - trail * (i + 1) / steps)
+              var al = fade * Math.pow(1 - i / steps, 1.6)
+              ctx.strokeStyle = i < 2 ? Qt.rgba(1, 1, 1, al) : Qt.rgba(col.r, col.g, col.b, al)
+              ctx.lineWidth = 2.5 * (1 - i / steps) + 0.8
+              ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke()
+            }
+          }
+        }
+      }
+
       // Go menu bottom row: Apps / Tablet / System open their submenus.
       Item {
         id: goFooter
@@ -3105,10 +3428,13 @@ Item {
                     if (footButton.modelData.rightCommand) {
                       root.cancel()
                       root.runAction(footButton.modelData.rightCommand)
+                    } else if (footButton.modelData.rightTarget) {
+                      root.setActiveMenu(footButton.modelData.rightTarget, true, true)
                     }
                     return
                   }
                   // Apps toggles the app panel in place; the others are submenus.
+                  if (!footButton.modelData.command) footComets.launch(footButton.index)
                   if (footButton.modelData.apps) {
                     root.setGoApps(!root.goApps)
                   } else if (footButton.modelData.keys) {

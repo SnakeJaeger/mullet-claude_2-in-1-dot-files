@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "daa.tablet-greet",
+  "name": "Greeter button",
+  "version": "1.0.0",
+  "author": "daa",
+  "description": "Omarchy logo on the tablet bar: opens the tablet greeter",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Greeter button",
+    "description": "Omarchy logo on the tablet bar: opens the tablet greeter",
+    "category": "System",
+    "allowMultiple": false
+  }
+}

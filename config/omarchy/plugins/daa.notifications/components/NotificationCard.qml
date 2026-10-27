@@ -107,8 +107,9 @@ BorderSurface {
     visible: root.elapsed >= 0
     preferredRendererType: Shape.CurveRenderer
 
-    readonly property color cyan: "#7dcfff"
-    readonly property color coral: "#f7768e"  // window border gradient (looknfeel.lua)
+    // The window border's gradient (looknfeel.lua): accent -> second accent.
+    readonly property color cyan: Commons.Color.accent
+    readonly property color coral: Commons.Color.urgent
     readonly property color head: "#fff3ee"
     readonly property real headLength: 50
 

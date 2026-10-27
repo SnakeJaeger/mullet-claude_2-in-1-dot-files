@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""Static map of the desktop setup: what triggers what. For bug-hunting and
+for handing an agent the lay of the land. Writes Markdown (default
+~/Documents/desktop-map.md; `config-map -` prints it).
+
+Covers keybindings (from the live registry), ~/.local/bin scripts and who
+calls them, shell IPC targets and their callers, Hyprland event hooks,
+Desktop settings keys and who reads them, login autostart, theme hooks and
+user timers.
+"""
+import glob, json, os, re, subprocess, sys, time
+from collections import defaultdict
+
+HOME = os.path.expanduser("~")
+BIN = f"{HOME}/.local/bin"
+HYPR = f"{HOME}/.config/hypr"
+PLUGINS = f"{HOME}/.config/omarchy/plugins"
+HOOKS = f"{HOME}/.config/omarchy/hooks"
+
+
+def rel(p):
+    return p.replace(HOME, "~")
+
+
+def read(p):
+    try:
+        return open(p, errors="replace").read()
+    except OSError:
+        return ""
+
+
+def is_text(p):
+    try:
+        return b"\0" not in open(p, "rb").read(2048)
+    except OSError:
+        return False
+
+
+SOURCES = [p for p in (glob.glob(f"{HYPR}/*.lua") + glob.glob(f"{PLUGINS}/*/*.qml") + glob.glob(f"{PLUGINS}/*/*/*.qml")
+                       + glob.glob(f"{PLUGINS}/*/*.js") + glob.glob(f"{BIN}/*") + glob.glob(f"{HOOKS}/*/*"))
+           if os.path.isfile(p) and is_text(p)]
+TEXT = {p: read(p) for p in SOURCES}
+
+
+def where(pattern, exclude=None):
+    rx = re.compile(pattern)
+    hits = []
+    for p, t in TEXT.items():
+        if p == exclude:
+            continue
+        for n, line in enumerate(t.splitlines(), 1):
+            if rx.search(line):
+                hits.append(f"{rel(p)}:{n}")
+    return hits
+
+
+def short(hits, n=6):
+    return ", ".join(hits[:n]) + (f" (+{len(hits) - n})" if len(hits) > n else "") if hits else "—"
+
+
+def purpose(p):
+    for line in read(p).splitlines()[1:12]:
+        s = line.strip()
+        if s.startswith(("#", "//")) and len(s) > 3 and not s.startswith("#!"):
+            return s.lstrip("#/ ").strip()
+        if s.startswith('"""'):
+            return s.strip('"').strip() or "(docstring)"
+    return ""
+
+
+out = [f"# Desktop map", "", f"Generated {time.strftime('%Y-%m-%d %H:%M')} by `config-map`. Static: it reads the files, so",
+       "anything built at runtime (string-assembled commands) can be missing.", ""]
+
+# 1. Keybindings
+out += ["## Keybindings", ""]
+try:
+    rows = json.loads(subprocess.run([f"{BIN}/keys-tool", "list"], capture_output=True, text=True, timeout=10).stdout)
+    out += ["| Keys | What | Moved from |", "|---|---|---|"]
+    for r in rows:
+        if r.get("description"):
+            out.append(f"| `{r['keys'] or 'off'}` | {r['description']} | {r.get('from') or ''} |")
+    out.append(f"\n{len(rows)} bindings in the registry (unnamed ones not listed).")
+except Exception as e:
+    out.append(f"(couldn't read the registry: {e})")
+out.append("")
+
+# 2. Scripts and their callers
+out += ["## Scripts in ~/.local/bin", "", "| Script | Purpose | Called from |", "|---|---|---|"]
+for p in sorted(glob.glob(f"{BIN}/*")):
+    if not os.path.isfile(p) or not is_text(p):
+        continue
+    name = os.path.basename(p)
+    hits = where(r"(?<![\w-])" + re.escape(name) + r"(?![\w-])", exclude=p)
+    out.append(f"| `{name}` | {purpose(p).replace('|', '/')} | {short(hits)} |")
+out.append("")
+
+# 3. Shell IPC
+out += ["## Shell IPC (`omarchy-shell <target> <method>`)", ""]
+targets = defaultdict(lambda: {"defined": [], "methods": set()})
+for p, t in TEXT.items():
+    if not p.endswith(".qml"):
+        continue
+    for m in re.finditer(r'IpcHandler\s*\{(.*?)\n  \}', t, re.S):
+        tm = re.search(r'target:\s*"([^"]+)"', m.group(1))
+        if tm:
+            targets[tm.group(1)]["defined"].append(rel(p))
+            targets[tm.group(1)]["methods"].update(re.findall(r"function (\w+)\(", m.group(1)))
+out += ["| Target | Methods | Defined in | Called from |", "|---|---|---|---|"]
+for tg, d in sorted(targets.items()):
+    out.append(f"| `{tg}` | {', '.join(sorted(d['methods']))} | {', '.join(d['defined'])} | {short(where('omarchy-shell ' + re.escape(tg) + ' '))} |")
+out += ["", "Plugin open / close goes through `omarchy-shell shell toggle|summon|hide <plugin>`:", ""]
+plug = defaultdict(list)
+for p, t in TEXT.items():
+    for n, line in enumerate(t.splitlines(), 1):
+        for m in re.finditer(r"omarchy-shell shell (?:toggle|summon|hide) ([\w.-]+)", line):
+            plug[m.group(1)].append(f"{rel(p)}:{n}")
+for k in sorted(plug):
+    out.append(f"- `{k}`: {short(plug[k], 8)}")
+out.append("")
+
+# 4. Hyprland hooks
+out += ["## Hyprland event hooks (`hl.on`)", ""]
+ev = defaultdict(list)
+for p, t in TEXT.items():
+    for n, line in enumerate(t.splitlines(), 1):
+        for m in re.finditer(r'hl\.on\(\s*"([^"]+)"', line):
+            ev[m.group(1)].append(f"{rel(p)}:{n}")
+for k in sorted(ev):
+    out.append(f"- `{k}`: {short(ev[k], 8)}")
+out.append("")
+
+# 5. Settings keys
+out += ["## Desktop settings keys (~/.config/omarchy/daa-ui.json)", ""]
+keys = defaultdict(set)
+for p, t in TEXT.items():
+    for k in re.findall(r'uiOpt\(\s*"(\w+)"', t) + re.findall(r'\bui(?:\.|\[")(\w+)', t):
+        if k not in ("ui", "length"):
+            keys[k].add(rel(p))
+    if p.endswith(".lua"):
+        for k in re.findall(r'daa_ui\(\s*"(\w+)"', t) + re.findall(r'ui_opt\(\s*"(\w+)"', t):
+            keys[k].add(rel(p))
+for k in sorted(keys):
+    out.append(f"- `{k}`: {', '.join(sorted(keys[k]))}")
+out.append("")
+
+# 6. Startup, hooks, timers
+out += ["## At login", ""]
+for p in (f"{HYPR}/autostart.lua",):
+    for n, line in enumerate(read(p).splitlines(), 1):
+        if "launch_on_start" in line and not line.strip().startswith("--"):
+            out.append(f"- {rel(p)}:{n} `{line.strip()}`")
+for n, line in enumerate(read(f"{HYPR}/dropdowns.lua").splitlines(), 1):
+    m = re.search(r'name = "([^"]+)".*preload = true', line)
+    if m:
+        out.append(f"- dropdown `{m.group(1)}` preloads (dropdowns.lua:{n})")
+out += ["", "## Omarchy hooks", ""]
+for p in sorted(glob.glob(f"{HOOKS}/*/*")):
+    if os.access(p, os.X_OK) and not p.endswith(".sample"):
+        out.append(f"- `{rel(p)}`: {purpose(p)}")
+out += ["", "## User timers", "", "```"]
+out.append(subprocess.run(["systemctl", "--user", "list-timers", "--all", "--no-pager"], capture_output=True, text=True).stdout.strip())
+out += ["```", ""]
+
+text = "\n".join(out) + "\n"
+dest = sys.argv[1] if len(sys.argv) > 1 else f"{HOME}/Documents/desktop-map.md"
+if dest == "-":
+    sys.stdout.write(text)
+else:
+    open(dest, "w").write(text)
+    print(dest)

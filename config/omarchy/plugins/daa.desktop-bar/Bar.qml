@@ -1504,7 +1504,7 @@ Item {
         width: parent.width
         height: barWindow.appsFlyoutOpen ? appsFlyoutWindow.fullHeight : 0
         radius: Math.min(Style.space(14), appsFlyoutWindow.fullHeight / 2)
-        color: Qt.rgba(0, 0, 0, 0.6)
+        color: Util.alpha(Commons.Color.background, 0.6)
         clip: true
 
         Behavior on height {
@@ -1592,7 +1592,7 @@ Item {
           id: appModules
           entries: root.appEntries
           region: "app"
-          anchors.left: logoModules.right
+          anchors.left: logoModules.width > 0 ? logoModules.right : leftModules.right
           anchors.leftMargin: Style.space(8) + root.pillPadding * 2
           anchors.verticalCenter: parent.verticalCenter
           Component.onCompleted: barWindow.appIsland = appModules
@@ -1797,17 +1797,32 @@ Item {
     y: root.pillInset
     height: parent.height - root.pillInset * 2
     radius: height / 2
-    color: Qt.rgba(0, 0, 0, 0.6)
+    color: Util.alpha(Commons.Color.background, 0.6)
   }
 
   // Extra islands outside the shell.json layout (its schema only knows
   // left/center/right), so their entries live here. The app island follows
   // the left island; the middle island sits between the center and right.
-  readonly property var logoEntries: [{ id: "daa.desktop-shortcuts" }]
-  readonly property var appEntries: [{ id: "daa.desktop-app-name" }]
-  readonly property var middleEntries: [{ id: "daa.desktop-media" }]
+  // Each can be switched off in Desktop settings → Bar (daa-ui.json).
+  readonly property var logoEntries: uiOpt("barLogo", true) ? [{ id: "daa.desktop-shortcuts" }] : []
+  readonly property var appEntries: uiOpt("barAppName", true) ? [{ id: "daa.desktop-app-name" }] : []
+  readonly property var middleEntries: uiOpt("barMedia", true) ? [{ id: "daa.desktop-media" }] : []
+
+  property var ui: ({})
+  function uiOpt(key, fallback) {
+    var v = root.ui[key]
+    return v === undefined || v === null ? fallback : v
+  }
+  FileView {
+    path: root.home + "/.config/omarchy/daa-ui.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { root.ui = JSON.parse(text() || "{}") } catch (e) {} }
+    onLoadFailed: root.ui = ({})
+  }
   readonly property var hoverOpenIds: [
-    "daa.agents", "omarchy.bluetooth", "daa.network", "daa.audio",
+    "daa.agents", "daa.bluetooth", "daa.network", "daa.audio",
     "daa.monitor", "daa.power", "daa.clock", "daa.weather"
   ]
 

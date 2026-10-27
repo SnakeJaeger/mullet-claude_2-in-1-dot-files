@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+"""Helper for Desktop settings → Bar (daa.settings/BarPage.qml).
+
+  bar-tool list               the bar's widgets per region, plus hidden ones (JSON)
+  bar-tool hide <id>          take a widget off the bar (remembered, so Show puts
+                              it back where it was, settings included)
+  bar-tool show <id>
+  bar-tool move <id> -1|1     one place left / right within its region
+  bar-tool clock <format>     the clock's label format (Qt date format)
+The shell reloads shell.json by itself when it changes.
+"""
+import json, os, sys
+
+HOME = os.path.expanduser("~")
+SHELL = f"{HOME}/.config/omarchy/shell.json"
+HIDDEN = f"{HOME}/.config/omarchy/daa-bar-hidden.json"
+REGIONS = ("left", "center", "right")
+LABELS = {
+    "daa.desktop-arch-menu": "Go menu button", "daa.desktop-workspaces": "Workspaces",
+    "daa.clock": "Clock", "omarchy.keyboard-layout": "Keyboard layout", "daa.weather": "Weather",
+    "omarchy.system-update": "Omarchy update", "daa.desktop-indicators": "Indicators (recording, idle…)",
+    "daa.updates": "Package updates", "daa.tray": "System tray", "daa.agents": "Agents",
+    "omarchy.bluetooth": "Bluetooth", "daa.network": "Network", "daa.audio": "Audio",
+    "daa.monitor": "System stats", "daa.power": "Battery", "daa.notify-bell": "Notification bell",
+}
+# Taking these off would leave the bar without a way back in.
+LOCKED = {"daa.desktop-arch-menu", "daa.desktop-workspaces", "daa.clock"}
+
+
+def load(path, default):
+    try:
+        return json.load(open(path))
+    except (OSError, ValueError):
+        return default
+
+
+def save(path, data):
+    # In place, not a rename: the shell's file watch follows the inode.
+    text = json.dumps(data, indent=2) + "\n"
+    with open(path, "w") as f:
+        f.write(text)
+
+
+def eid(e):
+    return e.get("id") if isinstance(e, dict) else str(e)
+
+
+def find(layout, wid):
+    for r in REGIONS:
+        for i, e in enumerate(layout.get(r, [])):
+            if eid(e) == wid:
+                return r, i
+    return None, -1
+
+
+def row(e):
+    i = eid(e)
+    return {"id": i, "label": LABELS.get(i, i.split(".", 1)[-1].replace("-", " ").capitalize()), "locked": i in LOCKED}
+
+
+cfg = load(SHELL, None)
+if cfg is None:
+    print(json.dumps({"ok": False, "error": "Can't read shell.json"}))
+    sys.exit(1)
+layout = cfg.setdefault("bar", {}).setdefault("layout", {})
+hidden = load(HIDDEN, [])
+cmd, args = (sys.argv[1] if len(sys.argv) > 1 else ""), sys.argv[2:]
+
+if cmd == "list":
+    clock = next((e for e in layout.get("center", []) if eid(e) == "daa.clock"), {})
+    print(json.dumps({"regions": {r: [row(e) for e in layout.get(r, [])] for r in REGIONS},
+                      "hidden": [dict(row(h["entry"]), region=h["region"]) for h in hidden],
+                      "clock": clock.get("format", "dddd HH:mm") if isinstance(clock, dict) else ""}))
+elif cmd == "hide" and args and args[0] not in LOCKED:
+    r, i = find(layout, args[0])
+    if r:
+        hidden = [h for h in hidden if eid(h["entry"]) != args[0]]
+        hidden.append({"region": r, "index": i, "entry": layout[r].pop(i)})
+        save(SHELL, cfg)
+        save(HIDDEN, hidden)
+    print(json.dumps({"ok": bool(r)}))
+elif cmd == "show" and args:
+    h = next((h for h in hidden if eid(h["entry"]) == args[0]), None)
+    if h and find(layout, args[0])[0] is None:
+        lst = layout.setdefault(h["region"], [])
+        lst.insert(min(h.get("index", len(lst)), len(lst)), h["entry"])
+        save(SHELL, cfg)
+    save(HIDDEN, [x for x in hidden if eid(x["entry"]) != args[0]])
+    print(json.dumps({"ok": bool(h)}))
+elif cmd == "move" and len(args) == 2:
+    r, i = find(layout, args[0])
+    j = i + (1 if args[1] == "1" else -1)
+    if r and 0 <= j < len(layout[r]):
+        layout[r][i], layout[r][j] = layout[r][j], layout[r][i]
+        save(SHELL, cfg)
+    print(json.dumps({"ok": bool(r)}))
+elif cmd == "clock" and args:
+    r, i = find(layout, "daa.clock")
+    if r:
+        layout[r][i]["format"] = args[0]
+        save(SHELL, cfg)
+    print(json.dumps({"ok": bool(r)}))
+else:
+    print(__doc__)
+    sys.exit(1)

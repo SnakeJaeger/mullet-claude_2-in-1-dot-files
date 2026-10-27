@@ -1,0 +1,34 @@
+#!/bin/bash
+# Root side of sddm-tool (run through pkexec). Accepts exactly:
+#   sddm-apply theme <theme>
+#   sddm-apply background <theme> <image>
+#   sddm-apply avatar <user> <image>
+set -euo pipefail
+themes=/usr/share/sddm/themes
+ok_theme() { [[ $1 =~ ^[A-Za-z0-9._-]+$ && -d $themes/$1 ]]; }
+ok_image() { [[ -f $1 && ${1,,} =~ \.(png|jpe?g|webp)$ ]]; }
+case ${1:-} in
+  theme)
+    ok_theme "${2:-}" || { echo "No such theme." >&2; exit 2; }
+    printf '[Theme]\nCurrent=%s\n' "$2" >/etc/sddm.conf.d/99-zz-theme.conf ;;
+  background)
+    ok_theme "${2:-}" && ok_image "${3:-}" || { echo "Bad theme or picture." >&2; exit 2; }
+    ext=${3##*.}; ext=${ext,,}
+    install -m 644 "$3" "$themes/$2/daa-background.$ext"
+    conf=$themes/$2/theme.conf.user
+    if [[ -f $conf ]] && grep -qi '^background=' "$conf"; then
+      sed -i "s|^[Bb]ackground=.*|background=daa-background.$ext|" "$conf"
+    else
+      grep -q '^\[General\]' "$conf" 2>/dev/null || printf '[General]\n' >>"$conf"
+      sed -i "/^\[General\]/a background=daa-background.$ext" "$conf"
+    fi ;;
+  avatar)
+    [[ ${2:-} =~ ^[a-z_][a-z0-9_-]*$ ]] && id "$2" >/dev/null 2>&1 && ok_image "${3:-}" || { echo "Bad user or picture." >&2; exit 2; }
+    install -d -m 755 /var/lib/AccountsService/icons /var/lib/AccountsService/users
+    install -m 644 "$3" "/var/lib/AccountsService/icons/$2"
+    f=/var/lib/AccountsService/users/$2
+    [[ -f $f ]] || printf '[User]\n' >"$f"
+    if grep -q '^Icon=' "$f"; then sed -i "s|^Icon=.*|Icon=/var/lib/AccountsService/icons/$2|" "$f"
+    else sed -i "/^\[User\]/a Icon=/var/lib/AccountsService/icons/$2" "$f"; fi ;;
+  *) echo "usage: sddm-apply theme|background|avatar …" >&2; exit 2 ;;
+esac

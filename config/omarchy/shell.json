@@ -43,7 +43,7 @@
           "id": "daa.agents"
         },
         {
-          "id": "omarchy.bluetooth"
+          "id": "daa.bluetooth"
         },
         {
           "id": "daa.network"
@@ -150,6 +150,30 @@
     },
     {
       "id": "daa.search"
+    },
+    {
+      "id": "daa.settings"
+    },
+    {
+      "id": "daa.powerbar"
+    },
+    {
+      "id": "daa.zap"
+    },
+    {
+      "id": "daa.overview"
+    },
+    {
+      "id": "daa.bluetooth"
+    },
+    {
+      "id": "daa.tablet-greeter"
+    },
+    {
+      "id": "daa.tablet-greet"
+    },
+    {
+      "id": "daa.spin"
     }
   ],
   "version": 1

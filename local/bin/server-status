@@ -53,22 +53,43 @@ fi
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 { [[ -n $host ]] && timeout 1.5 bash -c "exec 3<>/dev/tcp/$host/$vncport" 2>/dev/null && touch "$tmp/remote"; } &
+
+# The lab box's own Lab API (set LAB_API, e.g. https://<box>:8444/api/v1)
+# reports every service's state in one request; without it, or if it doesn't
+# answer, each service is probed directly as before.
+LAB_API=${LAB_API:-$(cat "$HOME/.config/lab-services/api" 2>/dev/null)}
+api_ok=false
+if [[ -n $LAB_API ]] && curl -s -m 2 "$LAB_API/status" >"$tmp/api" 2>/dev/null && jq -e '.services' "$tmp/api" >/dev/null 2>&1; then
+  api_ok=true
+fi
+
 i=0
 while IFS= read -r line; do
-  url="$(base_url "$line")$(field "$line" 3)"
-  { [[ -n $host ]] && curl -s -o /dev/null -m 1.5 -w '%{http_code}' "$url" >"$tmp/$i"; } &
+  if ! $api_ok; then
+    url="$(base_url "$line")$(field "$line" 3)"
+    { [[ -n $host ]] && curl -s -o /dev/null -m 1.5 -w '%{http_code}' "$url" >"$tmp/$i"; } &
+  fi
   i=$((i + 1))
 done < <(services)
 wait
 
+# Service name in the list -> the API's id (Calendar is Nextcloud's).
+api_id() { local n=${1,,}; [[ $n == calendar ]] && n=nextcloud; echo "$n"; }
+
 i=0
 while IFS= read -r line; do
-  code=$(cat "$tmp/$i" 2>/dev/null)
-  up=false; [[ -n $code && $code != 000 ]] && up=true
+  if $api_ok; then
+    state=$(jq -r --arg id "$(api_id "$(field "$line" 1)")" '.services[] | select(.id == $id) | .state' "$tmp/api")
+    up=false; [[ $state == up || $state == degraded ]] && up=true
+  else
+    code=$(cat "$tmp/$i" 2>/dev/null)
+    up=false; [[ -n $code && $code != 000 ]] && up=true
+  fi
   jq -cn --arg name "$(field "$line" 1)" --arg icon "$(field "$line" 4)" \
     --arg url "$(base_url "$line")" --argjson up "$up" \
     '{name: $name, icon: $icon, url: $url, up: $up}'
   i=$((i + 1))
 done < <(services) | jq -cs --argjson host "$([[ -n $host ]] && echo true || echo false)" \
   --argjson remote "$([[ -e $tmp/remote ]] && echo true || echo false)" \
-  '{host: $host, remote: $remote, services: .}'
+  --arg summary "$($api_ok && jq -r '.summary // empty' "$tmp/api")" \
+  '{host: $host, remote: $remote, services: ., summary: $summary}'

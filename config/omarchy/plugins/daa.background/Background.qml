@@ -128,6 +128,12 @@ Item {
     }
   }
 
+  Process {
+    id: tabletTapGate
+    command: ["test", "-e", root.home + "/.local/state/omarchy/toggles/wallpaper-doubletap-tablet-on"]
+    onExited: function(code) { if (code === 0) root.openSelector() }
+  }
+
   function openSelector() {
     if (!bgSwitchProc.running) bgSwitchProc.running = true
   }
@@ -338,8 +344,8 @@ Item {
       }
 
       // In tablet mode a tap on bare wallpaper clears away everything that
-      // isn't an app (keyboard, scratchpads, menus, bar popups), and a double
-      // tap no longer opens the background selector (Quick toggles has it).
+      // isn't an app (keyboard, scratchpads, menus, bar popups); a double tap
+      // opens the background selector only if the picker's tablet toggle is on.
       MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -348,7 +354,12 @@ Item {
             Quickshell.execDetached([root.home + "/.local/bin/tablet-mode", "dismiss"])
         }
         onDoubleClicked: function(mouse) {
-          if (root.tabletMode) return
+          // Tablet mode: only when the picker's "Double-tap in tablet mode"
+          // toggle is on (its flag file exists).
+          if (root.tabletMode) {
+            if (mouse.button === Qt.LeftButton && !tabletTapGate.running) tabletTapGate.running = true
+            return
+          }
           // daa: the background picker's toggle can turn this off.
           root.pendingDoubleClick = mouse.button === Qt.RightButton ? "theme" : "background"
           if (!doubleClickGate.running) doubleClickGate.running = true

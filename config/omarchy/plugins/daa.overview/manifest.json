@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "daa.overview",
+  "name": "Window Overview",
+  "version": "1.0.0",
+  "author": "daa",
+  "description": "SUPER + TAB (or a corner swipe in tablet mode): every open app by workspace; close with the corner x, drag to another workspace",
+  "kinds": [
+    "menu"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "Overview.qml"
+  }
+}

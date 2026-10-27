@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Login apps and startup settings for Desktop settings → Startup.
+
+  startup-apps                 (at login) launch every enabled app in
+                               ~/.config/hypr/startup_user.json
+  startup-apps list            JSON: {apps, dropdowns, xdg}
+  startup-apps preload <name> on|off
+  startup-apps xdg <file.desktop> on|off   (Hidden=true override in
+                               ~/.config/autostart, like GNOME's own switch)
+  startup-apps save '<json>'   the login apps list [{name, cmd, enabled, delay}]
+"""
+import glob, json, os, re, subprocess, sys, time
+
+HOME = os.path.expanduser("~")
+APPS = f"{HOME}/.config/hypr/startup_user.json"
+PRELOAD_OFF = f"{HOME}/.config/hypr/preload_off"
+USER_AUTOSTART = f"{HOME}/.config/autostart"
+
+
+def load(path, default):
+    try:
+        return json.load(open(path))
+    except (OSError, ValueError):
+        return default
+
+
+def preload_off():
+    try:
+        return {l.strip() for l in open(PRELOAD_OFF) if l.strip()}
+    except OSError:
+        return set()
+
+
+def dropdowns():
+    # name + title of every preloading dropdown, from dropdowns.lua (+ user ones).
+    out = []
+    src = open(f"{HOME}/.config/hypr/dropdowns.lua").read()
+    src = src.split("\n}\n", 1)[0]  # just the list at the top
+    hits = list(re.finditer(r'name = "([^"]+)", title = "([^"]+)"', src))
+    for i, m in enumerate(hits):
+        span = src[m.end():hits[i + 1].start() if i + 1 < len(hits) else len(src)]
+        if "preload = true" in span:
+            out.append({"name": m.group(1), "title": m.group(2).replace("Dropdown ", "")})
+    for d in load(f"{HOME}/.config/hypr/dropdowns_user.json", []):
+        if d.get("preload"):
+            out.append({"name": d["name"], "title": d.get("label") or d["name"]})
+    off = preload_off()
+    for d in out:
+        d["enabled"] = d["name"] not in off
+    return out
+
+
+def desktop_field(path, key):
+    try:
+        for line in open(path, errors="replace"):
+            if line.startswith(key + "="):
+                return line.split("=", 1)[1].strip()
+    except OSError:
+        pass
+    return ""
+
+
+def xdg():
+    seen = {}
+    for d in ("/etc/xdg/autostart", USER_AUTOSTART):
+        for p in sorted(glob.glob(d + "/*.desktop")):
+            seen[os.path.basename(p)] = p
+    out = []
+    for name, p in sorted(seen.items()):
+        if desktop_field(p, "NoDisplay") == "true" and not p.startswith(USER_AUTOSTART):
+            continue
+        only = desktop_field(p, "OnlyShowIn")
+        if only and "Hyprland" not in only:
+            continue
+        system = f"/etc/xdg/autostart/{name}"
+        out.append({"file": name, "name": desktop_field(p, "Name") or desktop_field(system, "Name") or name,
+                    "enabled": desktop_field(p, "Hidden") != "true" and desktop_field(p, "X-GNOME-Autostart-enabled") != "false"})
+    return out
+
+
+def set_xdg(name, on):
+    os.makedirs(USER_AUTOSTART, exist_ok=True)
+    user = f"{USER_AUTOSTART}/{name}"
+    src = user if os.path.exists(user) else f"/etc/xdg/autostart/{name}"
+    lines = [l for l in open(src, errors="replace").read().splitlines() if not l.startswith("Hidden=")]
+    if not on:
+        # Hidden goes in the [Desktop Entry] group, right after its header.
+        i = next((n for n, l in enumerate(lines) if l.strip() == "[Desktop Entry]"), -1)
+        lines.insert(i + 1, "Hidden=true")
+    open(user, "w").write("\n".join(lines) + "\n")
+
+
+cmd, args = (sys.argv[1] if len(sys.argv) > 1 else ""), sys.argv[2:]
+if cmd == "":
+    for a in load(APPS, []):
+        if a.get("enabled", True) and a.get("cmd"):
+            delay = float(a.get("delay") or 0)
+            line = (f"sleep {delay}; " if delay else "") + f"exec uwsm-app -- {a['cmd']}"
+            subprocess.Popen(["bash", "-c", line], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+elif cmd == "list":
+    print(json.dumps({"apps": load(APPS, []), "dropdowns": dropdowns(), "xdg": xdg()}))
+elif cmd == "preload" and len(args) == 2:
+    off = preload_off()
+    (off.discard if args[1] == "on" else off.add)(args[0])
+    open(PRELOAD_OFF, "w").write("".join(n + "\n" for n in sorted(off)))
+    print(json.dumps({"ok": True}))
+elif cmd == "xdg" and len(args) == 2 and re.fullmatch(r"[\w.@+-]+\.desktop", args[0]):
+    set_xdg(args[0], args[1] == "on")
+    print(json.dumps({"ok": True}))
+elif cmd == "save" and args:
+    with open(APPS, "w") as f:
+        json.dump(json.loads(args[0]), f, indent=2)
+        f.write("\n")
+    print(json.dumps({"ok": True}))
+else:
+    print(__doc__)
+    sys.exit(1)

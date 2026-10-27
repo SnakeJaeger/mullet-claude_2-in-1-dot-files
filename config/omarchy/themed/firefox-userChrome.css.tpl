@@ -81,7 +81,8 @@ menupopup, panel {
 }
 
 #navigator-toolbox { border-bottom-color: var(--omarchy-bg-darker) !important; }
-#urlbar ::selection, .urlbar-input::selection { background-color: var(--omarchy-selection) !important; }
+/* Text selection highlight: theme coral (pages get the same rule in userContent). */
+::selection { background-color: var(--omarchy-red) !important; color: var(--omarchy-bg-darker) !important; }
 .tab-background:is([selected], [multiselected]) { box-shadow: none !important; }
 /* Selected tab: coral -> cyan diagonal, the reverse of the Hyprland window border (cyan -> coral, 45deg). */
 .tab-background[selected]:not([multiselected]) {

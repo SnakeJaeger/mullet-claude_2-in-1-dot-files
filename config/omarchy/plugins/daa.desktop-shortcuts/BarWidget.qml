@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Io
 import QtQuick
+import Qt5Compat.GraphicalEffects
 import qs.Commons
 import qs.Ui
 
@@ -17,12 +18,43 @@ BarWidget {
   id: root
   moduleName: "daa.desktop-shortcuts"
 
+  // Desktop UI settings (daa.settings writes ~/.config/omarchy/daa-ui.json;
+  // a missing key means its default, i.e. on).
+  property var ui: ({})
+  function uiOpt(key, fallback) {
+    // Calm mode (power-saver; daa.settings writes ~/.local/state/daa/calm):
+    // the decorative animations pause, whatever their own switches say.
+    if (root.calm && root.calmKeys.indexOf(key) !== -1) return false
+    var v = root.ui ? root.ui[key] : undefined; return v === undefined || v === null ? fallback : v
+  }
+  readonly property var calmKeys: ["goMenuAnimations", "duel", "launcherTrails", "shortcutCardAnimations",
+    "shortcutCardTrails", "workspaceSpring", "magellanic", "breathingBorders", "barAlertPulse"]
+  property bool calm: false
+  FileView {
+    path: Quickshell.env("HOME") + "/.local/state/daa/calm"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.calm = String(text()).trim() === "1"
+    onLoadFailed: root.calm = false
+  }
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/daa-ui.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { root.ui = JSON.parse(text() || "{}") } catch (e) {} }
+    onLoadFailed: root.ui = ({})   // file deleted: all defaults
+  }
+
   readonly property bool guest: Quickshell.env("USER") === "guest"
 
   // White, or light coral while the ABACABB blood mode (daa.search) is on;
   // the white SVG icons get recoloured copies then.
   readonly property bool blood: Qt.colorEqual(Color.accent, "#e0607a")
-  readonly property color white: blood ? "#ffb8c6" : "#ffffff"
+  // Light themes get dark tiles/text: the theme's foreground instead of white.
+  readonly property bool lightTheme: 0.299 * Color.background.r + 0.587 * Color.background.g + 0.114 * Color.background.b > 0.5
+  readonly property color white: blood ? "#ffb8c6" : lightTheme ? Color.foreground : "#ffffff"
   readonly property var svgText: {
     // text() isn't a property; the loaded flags make this re-evaluate.
     if (!(gns3Svg.loaded && tailscaleSvg.loaded && obsidianSvg.loaded && retroarchSvg.loaded)) return ({})
@@ -33,10 +65,13 @@ BarWidget {
   FileView { id: tailscaleSvg; path: root.home + "/.config/omarchy/plugins/daa.desktop-shortcuts/tailscale.svg"; printErrors: false }
   FileView { id: obsidianSvg; path: root.home + "/.config/omarchy/plugins/daa.desktop-shortcuts/obsidian.svg"; printErrors: false }
   FileView { id: retroarchSvg; path: root.home + "/.config/omarchy/plugins/daa.desktop-shortcuts/retroarch.svg"; printErrors: false }
+  // The white SVG icons, recoloured when the tile colour isn't plain white
+  // (accent mode, or the blood mode's light coral).
   function iconSource(name) {
     if (!name) return ""
-    if (root.blood && root.svgText[name])
-      return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(String(root.svgText[name]).replace(/#ffffff/gi, "#ffb8c6"))
+    var tint = String(root.builtinTint)
+    if (!Qt.colorEqual(root.builtinTint, "#ffffff") && root.svgText[name])
+      return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(String(root.svgText[name]).replace(/#ffffff/gi, tint))
     return "file://" + root.home + "/.config/omarchy/plugins/daa.desktop-shortcuts/" + name
   }
   readonly property string home: Quickshell.env("HOME")
@@ -46,30 +81,106 @@ BarWidget {
     return "hyprctl eval 'dropdown_relaunch(\"files\", [==[" + Util.shellQuote(path) + "]==])'"
   }
 
-  readonly property var topRow: [
-    { icon: "\uf269", label: "Firefox", command: "omarchy-launch-browser" },
-    { image: "obsidian.svg", label: "Obsidian", command: "uwsm-app -- obsidian" },
-    { icon: "\ue7aa", label: "Sublime", command: "uwsm-app -- subl" },
-    { icon: "󰎁", label: "Jellyfin", command: "uwsm-app -- jellyfin-desktop" },
-    { icon: "󰋩", label: "Immich", command: "~/.local/bin/server-status open Immich" },
-    { image: "gns3.svg", label: "GNS3", command: "uwsm-app -- ~/.local/bin/gns3" },
+  // Built-in shortcuts by key. "favorites" (settings, ordered) picks the top
+  // row from these keys and/or desktop-entry ids (any installed app, shown
+  // with its own icon); "shortcutsHidden" hides bottom-row keys.
+  // daa.settings' Favorites tab edits both.
+  readonly property var builtins: ({
+    firefox: { icon: "\uf269", label: "Firefox", command: "omarchy-launch-browser" },
+    obsidian: { image: "obsidian.svg", label: "Obsidian", command: "uwsm-app -- obsidian" },
+    sublime: { icon: "\ue7aa", label: "Sublime", command: "uwsm-app -- subl" },
+    jellyfin: { icon: "󰎁", label: "Jellyfin", command: "uwsm-app -- jellyfin-desktop" },
+    immich: { icon: "󰋩", label: "Immich", command: "~/.local/bin/server-status open Immich" },
+    gns3: { image: "gns3.svg", label: "GNS3", command: "uwsm-app -- ~/.local/bin/gns3" },
     // Same as the games button: ES-DE, or RetroArch when it's missing.
-    { image: "retroarch.svg", label: "ES-DE", command: "command -v es-de >/dev/null && exec uwsm-app -- es-de || exec uwsm-app -- retroarch" }
-  ]
+    esde: { image: "retroarch.svg", label: "ES-DE", command: "command -v es-de >/dev/null && exec uwsm-app -- es-de || exec uwsm-app -- retroarch" },
+    terminal: { icon: "\uf120", label: "Terminal", command: "hyprctl eval 'dropdown_show(\"terminal\")'" },
+    tailscale: { image: "tailscale.svg", label: "Tailscale", command: "~/.local/bin/tailscale-toggle" },
+    lab: { icon: "󰢹", label: "Lab", command: "uwsm-app -- remmina", lab: true },
+    mullvad: { icon: "󰦝", label: "Mullvad", command: "hyprctl eval 'dropdown_show(\"vpn\")'" },
+    home: { icon: "󰋜", label: "Home", command: folder(home) },
+    documents: { icon: "󰈙", label: "Documents", command: folder(home + "/Documents") },
+    downloads: { icon: "󰉍", label: "Downloads", command: folder(home + "/Downloads") }
+  })
+  readonly property var defaultFavorites: ["firefox", "obsidian", "sublime", "jellyfin", "immich", "gns3", "esde"]
+
+  // Settings "favoriteIconColor": original (app's own icon) / white /
+  // accent. Recoloured apps use, in order: the app's -symbolic icon, a Nerd
+  // Font glyph from appGlyphs, else a badge with the app's initial (tinting
+  // the full-colour icon turned square icons into solid blocks).
+  readonly property string iconColorMode: root.uiOpt("favoriteIconColor", "original")
+  readonly property color favTint: iconColorMode === "accent" ? Color.accent : root.white
+  // Built-ins have no "original" colours, so only accent changes them.
+  readonly property color builtinTint: iconColorMode === "accent" ? Color.accent : root.white
+
+  // Built-ins whose app isn't installed are skipped (not everyone has
+  // Tailscale, GNS3, Mullvad, …). `needs`: a command or a path to check.
+  readonly property var needs: ({
+    obsidian: "obsidian", sublime: "subl", jellyfin: "jellyfin-desktop", gns3: "gns3",
+    immich: "~/.local/bin/server-status", esde: "es-de|retroarch", tailscale: "tailscale",
+    lab: "remmina", mullvad: "mullvad"
+  })
+  property var missing: []
+  Process {
+    running: true
+    command: ["bash", "-c",
+      "while read -r key alts; do ok=; IFS='|' read -ra opts <<<\"$alts\"; " +
+      "for o in \"${opts[@]}\"; do o=${o/#\\~/$HOME}; " +
+      "if [[ $o == /* ]]; then [[ -x $o ]] && ok=1; else command -v \"$o\" >/dev/null && ok=1; " +
+      "[[ -x $HOME/.local/bin/$o ]] && ok=1; fi; done; [[ $ok ]] || echo \"$key\"; done"]
+    stdinEnabled: true
+    onStarted: {
+      var lines = []
+      for (var k in root.needs) lines.push(k + " " + root.needs[k])
+      write(lines.join("\n") + "\n")
+      stdinEnabled = false
+    }
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.missing = String(text || "").split("\n").filter(function(l) { return l.length > 0 })
+    }
+  }
+  readonly property var appGlyphs: ({
+    "Alacritty": "\ue795", "org.gnome.Ptyxis": "\ue795", "kitty": "\ue795",
+    "org.gnome.Nautilus": "󰉋", "org.kde.dolphin": "󰉋",
+    "chromium": "\uf268", "google-chrome": "\uf268", "brave-browser": "󰖟", "firefox": "\uf269",
+    "code": "󰨞", "visual-studio-code": "󰨞", "sublime_text": "\ue7aa", "nvim": "\ue7c5",
+    "steam": "\uf1b6", "discord": "\uf1ff", "spotify": "\uf1bc", "thunderbird": "\uf0e0",
+    "org.gnome.Calculator": "󰃬", "org.gnome.Calendar": "󰃭", "org.gnome.Weather": "󰖐",
+    "org.remmina.Remmina": "󰢹", "com.obsproject.Studio": "󰑋", "gimp": "\uf338",
+    "org.inkscape.Inkscape": "\uf33b", "libreoffice-writer": "󰈬", "libreoffice-calc": "󰈛",
+    "org.wireshark.Wireshark": "󰒍", "bitwarden": "󰞀", "Bitwarden": "󰞀"
+  })
+
+  function entryFor(key) {
+    if (root.builtins[key]) return root.builtins[key]
+    var app = DesktopEntries.byId(key)
+    if (!app) return null
+    var icon = String(app.icon || "")
+    var symbolic = icon && icon.charAt(0) !== "/" ? Quickshell.iconPath(icon + "-symbolic", true) : ""
+    return { appIcon: icon, label: String(app.name || key), symbolic: symbolic || "",
+      glyph: root.appGlyphs[key] || "",
+      command: "uwsm-app -- gtk-launch " + Util.shellQuote(key + ".desktop") }
+  }
+  function rowOf(keys) {
+    var hidden = root.uiOpt("shortcutsHidden", [])
+    var out = []
+    for (var i = 0; i < keys.length; i++) {
+      if (hidden.indexOf(keys[i]) !== -1 || root.missing.indexOf(keys[i]) !== -1) continue
+      var e = root.entryFor(keys[i])
+      if (e && !(e.lab && root.guest)) out.push(e)
+    }
+    return out
+  }
+
+  readonly property var topRow: {
+    DesktopEntries.applications.values   // re-check once entries load
+    return rowOf(root.uiOpt("favorites", root.defaultFavorites))
+  }
 
   // Bottom row: network on the left, folders on the right.
-  readonly property var networkRow: [
-    { icon: "\uf120", label: "Terminal", command: "hyprctl eval 'dropdown_show(\"terminal\")'" },
-    { image: "tailscale.svg", label: "Tailscale", command: "~/.local/bin/tailscale-toggle" },
-    { icon: "󰢹", label: "Lab", command: "uwsm-app -- remmina", lab: true },
-    { icon: "󰦝", label: "Mullvad", command: "hyprctl eval 'dropdown_show(\"vpn\")'" }
-  ].filter(function(entry) { return !(entry.lab && root.guest) })
-
-  readonly property var folderRow: [
-    { icon: "󰋜", label: "Home", command: folder(home) },
-    { icon: "󰈙", label: "Documents", command: folder(home + "/Documents") },
-    { icon: "󰉍", label: "Downloads", command: folder(home + "/Downloads") }
-  ]
+  readonly property var networkRow: rowOf(["terminal", "tailscale", "lab", "mullvad"])
+  readonly property var folderRow: rowOf(["home", "documents", "downloads"])
 
   readonly property bool hovered: button.tooltipHovered
   property bool buttonHovered: false
@@ -109,7 +220,7 @@ BarWidget {
 
   // The island widens while the logo grows, making room for the stem.
   property real grow: root.hovered || root.open ? 1 : 0
-  Behavior on grow { NumberAnimation { duration: 220; easing.type: Easing.OutBack; easing.overshoot: 1.6 } }
+  Behavior on grow { enabled: root.uiOpt("shortcutCardAnimations", true); NumberAnimation { duration: 220; easing.type: Easing.OutBack; easing.overshoot: 1.6 } }
   implicitWidth: button.implicitWidth + Style.space(8) * grow
   implicitHeight: button.implicitHeight
 
@@ -141,7 +252,8 @@ BarWidget {
     if (open) logoX = root.mapToItem(null, 0, 0).x
     revealAnim.stop()
     revealAnim.to = open ? 1 : 0
-    revealAnim.duration = open ? 520 : 180
+    // Settings: "shortcutCardAnimations" off = the card just appears.
+    revealAnim.duration = !root.uiOpt("shortcutCardAnimations", true) ? 1 : open ? 520 : 180
     revealAnim.easing.type = open ? Easing.Linear : Easing.InQuad
     revealAnim.start()
   }
@@ -175,7 +287,13 @@ BarWidget {
     fontFamily: "omarchy"
     horizontalMargin: 7.5
     foreground: root.hovered || root.open ? Color.accent : (root.bar ? root.bar.barForeground : Color.foreground)
-    onPressed: function(mouseButton) { root.open = !root.open }
+    // Left click toggles the card; right click edits the favourites.
+    onPressed: function(mouseButton) {
+      if (mouseButton === Qt.RightButton) {
+        root.open = false
+        if (root.bar) root.bar.run("omarchy-shell shell summon daa.settings '{\"page\":\"favorites\"}'")
+      } else root.open = !root.open
+    }
     // Grows while hovered (and while its card is open); see `grow`.
     scale: 1 + 0.45 * root.grow
   }
@@ -277,14 +395,15 @@ BarWidget {
       id: trace
       anchors.fill: parent
       z: 2
-      visible: root.reveal >= 0.3
+      // Settings: "shortcutCardTrails" on/off, "shortcutCardTrailSpeed".
+      visible: root.reveal >= 0.3 && root.uiOpt("shortcutCardTrails", true)
       property real t: 0
       property var special: null      // { n, run, color }
       property int specialNext: 0
 
       FrameAnimation {
         running: popup.visible && trace.visible
-        onTriggered: { trace.t += frameTime; trace.requestPaint() }
+        onTriggered: { trace.t += frameTime * root.uiOpt("shortcutCardTrailSpeed", 1); trace.requestPaint() }
       }
       Connections {
         target: root
@@ -499,13 +618,65 @@ BarWidget {
         width: Math.round(Style.font.heading * 1.35)
         height: width
 
+        // Recoloured app favourites with no symbolic icon but a known glyph.
+        readonly property bool recolour: root.iconColorMode !== "original" && tile.entry.appIcon !== undefined
+        readonly property bool useGlyph: recolour && !tile.entry.symbolic && !!tile.entry.glyph
+        readonly property bool useBadge: recolour && !tile.entry.symbolic && !tile.entry.glyph
+        Rectangle {
+          visible: parent.useBadge
+          anchors.fill: parent
+          anchors.margins: parent.width * 0.06
+          radius: width * 0.28
+          color: "transparent"
+          border.width: Math.max(1.5, parent.width * 0.07)
+          border.color: root.favTint
+          Text {
+            anchors.centerIn: parent
+            text: String(tile.entry.label || "?").charAt(0).toUpperCase()
+            color: root.favTint
+            font.family: root.bar && root.bar.fontFamily ? root.bar.fontFamily : ""
+            font.pixelSize: parent.height * 0.62
+            font.bold: true
+          }
+        }
         Text {
-          visible: !tile.entry.image
+          visible: parent.useGlyph
           anchors.centerIn: parent
-          text: tile.entry.icon || ""
-          color: root.white
+          text: tile.entry.glyph || ""
+          color: root.favTint
           font.family: "JetBrainsMono Nerd Font"
           font.pixelSize: parent.width
+        }
+        Text {
+          visible: !tile.entry.image && tile.entry.appIcon === undefined
+          anchors.centerIn: parent
+          text: tile.entry.icon || ""
+          color: root.builtinTint
+          font.family: "JetBrainsMono Nerd Font"
+          font.pixelSize: parent.width
+        }
+        // Apps added as favourites: their own (colour) icon, or recoloured
+        // (symbolic icon if there is one, else the icon flattened) via the
+        // overlay below.
+        Image {
+          id: appImage
+          visible: tile.entry.appIcon !== undefined && !parent.recolour
+          anchors.fill: parent
+          source: tile.entry.appIcon === undefined || parent.useGlyph || parent.useBadge ? ""
+            : parent.recolour && tile.entry.symbolic ? tile.entry.symbolic
+            : (tile.entry.appIcon.charAt(0) === "/" ? "file://" + tile.entry.appIcon
+            : Quickshell.iconPath(tile.entry.appIcon || "application-x-executable", true))
+          sourceSize.width: width * Screen.devicePixelRatio
+          sourceSize.height: height * Screen.devicePixelRatio
+          fillMode: Image.PreserveAspectFit
+          smooth: true
+          asynchronous: true
+        }
+        ColorOverlay {
+          visible: parent.recolour && !parent.useGlyph && !parent.useBadge
+          anchors.fill: appImage
+          source: appImage
+          color: root.favTint
         }
         // Single-colour #ffffff SVGs, so they're already white.
         Image {

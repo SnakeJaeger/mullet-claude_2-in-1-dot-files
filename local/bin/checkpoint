@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Checkpoints of the desktop setup (Desktop settings → Backups).
+
+  checkpoint save [name]     snapshot the setup to ~/.local/state/checkpoints
+  checkpoint list            JSON [{file, name, date, size}] newest first
+  checkpoint restore <file>  saves a "before restore" checkpoint first, then
+                             puts the snapshot back: hypr/ and the Omarchy
+                             plugins are replaced wholesale (so anything added
+                             since goes), the rest is laid over; then reloads
+                             Hyprland and restarts the shell
+  checkpoint delete <file>
+
+A checkpoint holds ~/.config/hypr, ~/.config/omarchy (not backgrounds/),
+~/.local/bin, ~/.config/autostart and ~/.config/lab-services.
+"""
+import json, os, re, shutil, subprocess, sys, tarfile, time
+
+HOME = os.path.expanduser("~")
+DIR = f"{HOME}/.local/state/checkpoints"
+PATHS = [".config/hypr", ".config/omarchy", ".local/bin", ".config/autostart", ".config/lab-services"]
+REPLACE = [".config/hypr", ".config/omarchy/plugins"]
+SKIP = (".config/omarchy/backgrounds",)
+
+
+def out(o):
+    print(json.dumps(o))
+
+
+def save(name=""):
+    os.makedirs(DIR, exist_ok=True)
+    slug = re.sub(r"[^A-Za-z0-9_-]+", "-", name).strip("-")[:40]
+    file = time.strftime("%Y-%m-%d_%H%M%S") + (f"_{slug}" if slug else "") + ".tar.gz"
+    with tarfile.open(f"{DIR}/{file}", "w:gz") as t:
+        for p in PATHS:
+            if os.path.exists(f"{HOME}/{p}"):
+                t.add(f"{HOME}/{p}", arcname=p,
+                      filter=lambda ti: None if ti.name.startswith(SKIP) or ti.name.endswith((".tmp", ".n")) else ti)
+    return file
+
+
+def listing():
+    rows = []
+    for f in sorted(os.listdir(DIR) if os.path.isdir(DIR) else [], reverse=True):
+        m = re.match(r"(\d{4}-\d\d-\d\d)_(\d\d)(\d\d)(\d\d)(?:_(.*))?\.tar\.gz$", f)
+        if m:
+            rows.append({"file": f, "date": f"{m.group(1)} {m.group(2)}:{m.group(3)}",
+                         "name": (m.group(5) or "").replace("-", " "),
+                         "size": os.path.getsize(f"{DIR}/{f}")})
+    return rows
+
+
+def safe_file(f):
+    return re.fullmatch(r"[\w.-]+\.tar\.gz", f or "") and os.path.exists(f"{DIR}/{f}")
+
+
+def restore(f):
+    before = save("before restore")
+    with tarfile.open(f"{DIR}/{f}") as t:
+        members = [m for m in t.getmembers()
+                   if not m.name.startswith(("/", "..")) and ".." not in m.name.split("/")
+                   and (m.isfile() or m.isdir() or m.issym())]
+        for p in REPLACE:
+            if any(m.name == p or m.name.startswith(p + "/") for m in members):
+                shutil.rmtree(f"{HOME}/{p}", ignore_errors=True)
+        t.extractall(HOME, members=members, filter="tar")
+    subprocess.run(["hyprctl", "reload"], capture_output=True)
+    subprocess.Popen(["bash", "-c", "sleep 0.5; omarchy restart shell"], start_new_session=True,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return before
+
+
+cmd, args = (sys.argv[1] if len(sys.argv) > 1 else ""), sys.argv[2:]
+if cmd == "save":
+    out({"ok": True, "file": save(" ".join(args))})
+elif cmd == "list":
+    out(listing())
+elif cmd == "restore" and args and safe_file(args[0]):
+    out({"ok": True, "before": restore(args[0])})
+elif cmd == "delete" and args and safe_file(args[0]):
+    os.unlink(f"{DIR}/{args[0]}")
+    out({"ok": True})
+else:
+    print(__doc__)
+    sys.exit(1)

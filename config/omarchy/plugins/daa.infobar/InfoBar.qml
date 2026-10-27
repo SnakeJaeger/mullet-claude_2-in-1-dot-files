@@ -15,6 +15,35 @@ import qs.Ui
 Item {
   id: root
 
+  // Desktop UI settings (daa.settings writes ~/.config/omarchy/daa-ui.json;
+  // a missing key means its default, i.e. on).
+  property var ui: ({})
+  function uiOpt(key, fallback) {
+    // Calm mode (power-saver; daa.settings writes ~/.local/state/daa/calm):
+    // the decorative animations pause, whatever their own switches say.
+    if (root.calm && root.calmKeys.indexOf(key) !== -1) return false
+    var v = root.ui ? root.ui[key] : undefined; return v === undefined || v === null ? fallback : v
+  }
+  readonly property var calmKeys: ["goMenuAnimations", "duel", "launcherTrails", "shortcutCardAnimations",
+    "shortcutCardTrails", "workspaceSpring", "magellanic", "breathingBorders", "barAlertPulse"]
+  property bool calm: false
+  FileView {
+    path: Quickshell.env("HOME") + "/.local/state/daa/calm"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.calm = String(text()).trim() === "1"
+    onLoadFailed: root.calm = false
+  }
+  FileView {
+    path: Quickshell.env("HOME") + "/.config/omarchy/daa-ui.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: { try { root.ui = JSON.parse(text() || "{}") } catch (e) {} }
+    onLoadFailed: root.ui = ({})   // file deleted: all defaults
+  }
+
   readonly property int holdMs: 4000
   readonly property int pad: Style.space(16)
   readonly property int iconSize: Style.space(18)
@@ -31,6 +60,31 @@ Item {
   property var quotes: []
   property date now: new Date()
   property bool barHidden: false
+
+  // ---- Next calendar event (refreshed every 5 min in the background, since
+  // reading the calendars takes a few seconds) ----
+  property var nextEvent: ({})
+  Process {
+    id: eventProc
+    command: [Quickshell.env("HOME") + "/.local/bin/next-event"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: { try { root.nextEvent = JSON.parse(String(text).trim() || "{}") } catch (e) {} }
+    }
+  }
+  Timer { interval: 300000; repeat: true; running: true; triggeredOnStart: true; onTriggered: if (!eventProc.running) eventProc.running = true }
+  readonly property string eventText: {
+    var e = root.nextEvent
+    if (!e || !e.start) return ""
+    var mins = Math.round((e.start * 1000 - root.now.getTime()) / 60000)
+    var when = e.all_day ? "today"
+      : mins <= 0 ? "now"
+      : mins < 60 ? "in " + mins + " min"
+      : mins < 24 * 60 ? "at " + Qt.formatTime(new Date(e.start * 1000), "HH:mm")
+      : ""
+    if (mins < -60) return ""
+    return "󰃭  " + e.summary + (when ? "  ·  " + when : "")
+  }
 
   function toggle() {
     if (opened) hide()
@@ -199,6 +253,7 @@ Item {
   }
 
   // quotes.txt: one per line, "#" comments skipped. A new one every 6 hours.
+  // Edited in Desktop settings → Bar.
   FileView {
     path: Qt.resolvedUrl("quotes.txt")
     watchChanges: true
@@ -289,10 +344,21 @@ Item {
       radius: 14
       // Frosted like the OSD (daa-infobar blur rule in hypr/looknfeel.lua).
       color: Util.alpha(Commons.Color.background, 0.77)
+      // Entrance (Desktop settings → Quick search and info bar): off, fade,
+      // rise (up from the screen edge) or pop (springs out of a smaller card).
+      readonly property string entrance: root.uiOpt("infoBarStyle", "fade")
+      readonly property bool animated: !root.snap && entrance !== "off"
       opacity: root.opened ? 1 : 0
-      scale: root.opened ? 1 : 0.97
-      Behavior on opacity { enabled: !root.snap; NumberAnimation { duration: root.opened ? 140 : 300; easing.type: Easing.OutCubic } }
-      Behavior on scale { enabled: !root.snap; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+      scale: root.opened ? 1 : entrance === "pop" ? 0.85 : 0.97
+      transform: Translate {
+        y: card.entrance === "rise" && !root.opened ? card.height + 10 : 0
+        Behavior on y { enabled: card.animated; NumberAnimation { duration: root.opened ? 260 : 200; easing.type: root.opened ? Easing.OutCubic : Easing.InCubic } }
+      }
+      Behavior on opacity { enabled: card.animated; NumberAnimation { duration: root.opened ? 140 : 300; easing.type: Easing.OutCubic } }
+      Behavior on scale {
+        enabled: card.animated
+        NumberAnimation { duration: card.entrance === "pop" ? 260 : 160; easing.type: card.entrance === "pop" && root.opened ? Easing.OutBack : Easing.OutCubic; easing.overshoot: 2 }
+      }
 
       // Breathing border: the window border's accent → coral gradient, drawn
       // once, its opacity slowly rising and falling.
@@ -301,12 +367,13 @@ Item {
         z: 10
         property real breath: 0.35
         SequentialAnimation on breath {
-          running: root.opened
+          running: root.opened && root.uiOpt("breathingBorders", true)
           loops: Animation.Infinite
-          NumberAnimation { to: 1; duration: 1700; easing.type: Easing.InOutSine }
-          NumberAnimation { to: 0.35; duration: 1700; easing.type: Easing.InOutSine }
+          NumberAnimation { to: 1; duration: 1700 / Math.max(0.1, root.uiOpt("breathingSpeed", 1)); easing.type: Easing.InOutSine }
+          NumberAnimation { to: 0.35; duration: 1700 / Math.max(0.1, root.uiOpt("breathingSpeed", 1)); easing.type: Easing.InOutSine }
         }
-        opacity: breath
+        // Settings: "breathingBorders" off = a steady border; "breathingSpeed".
+        opacity: root.uiOpt("breathingBorders", true) ? breath : 0.8
         // Repaint when the palette changes (theme switch, ABACABB blood mode).
         property color from: Commons.Color.accent
         property color to: Commons.Color.urgent
@@ -459,10 +526,23 @@ Item {
                 font.bold: true
                 font.letterSpacing: 1.2
               }
+
+              // Next calendar event within 24 h (~/.local/bin/next-event).
+              Text {
+                visible: text !== "" && root.uiOpt("infoEvent", true)
+                anchors.horizontalCenter: parent.horizontalCenter
+                topPadding: Style.space(3)
+                text: root.eventText
+                color: root.accent
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+                width: Math.min(implicitWidth, Style.space(260))
+              }
             }
 
             Rectangle {
-              visible: !!root.info.weather
+              visible: !!root.info.weather && root.uiOpt("infoWeather", true)
               anchors.verticalCenter: parent.verticalCenter
               width: 1
               height: Style.space(36)
@@ -470,7 +550,7 @@ Item {
             }
 
             Row {
-              visible: !!root.info.weather
+              visible: !!root.info.weather && root.uiOpt("infoWeather", true)
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(10)
 
@@ -563,7 +643,7 @@ Item {
 
         // Quote of the (quarter) day.
         Text {
-          visible: root.quote !== ""
+          visible: root.quote !== "" && root.uiOpt("infoQuote", true)
           Layout.fillWidth: true
           horizontalAlignment: Text.AlignHCenter
           text: root.quote
@@ -580,14 +660,17 @@ Item {
   readonly property var statusRows: {
     var rows = []
     var b = info.battery, bt = info.bluetooth
-    if (b.percent >= 0)
+    // Each line can be switched off in Desktop settings → Bar.
+    if (b.percent >= 0 && root.uiOpt("infoBattery", true))
       rows.push({ glyph: batteryGlyph(b), lit: b.state === "charging", widget: "daa.power", panel: "omarchy.power",
         text: b.percent + "%" + (b.state === "charging" ? "  charging" : "") })
-    rows.push({ glyph: info.wifi !== "" ? "󰖩" : info.ethernet ? "󰈀" : "󰖪", lit: info.wifi !== "" || info.ethernet,
+    if (root.uiOpt("infoNetwork", true))
+      rows.push({ glyph: info.wifi !== "" ? "󰖩" : info.ethernet ? "󰈀" : "󰖪", lit: info.wifi !== "" || info.ethernet,
       widget: "daa.network", panel: "omarchy.network",
       text: info.wifi !== "" ? info.wifi : info.ethernet ? "Wired" : "Offline" })
-    rows.push({ glyph: !bt.powered ? "󰂲" : bt.connected.length > 0 ? "󰂱" : "󰂯", lit: bt.connected.length > 0,
-      widget: "omarchy.bluetooth", panel: "omarchy.bluetooth",
+    if (root.uiOpt("infoBluetooth", true))
+      rows.push({ glyph: !bt.powered ? "󰂲" : bt.connected.length > 0 ? "󰂱" : "󰂯", lit: bt.connected.length > 0,
+      widget: "daa.bluetooth", panel: "omarchy.bluetooth",
       text: !bt.powered ? "Off" : bt.connected.length > 0 ? bt.connected[0] : "On" })
     // Longest first (stable for equal lengths).
     return rows.map(function(r, i) { r.i = i; return r })

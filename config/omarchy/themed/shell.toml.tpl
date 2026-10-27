@@ -167,7 +167,8 @@ scrim                     = "{{ background }}"
 scrim-alpha               = 0.5
 selected-background       = "{{ foreground }}"
 selected-background-alpha = 0.08
-selected-text             = "{{ accent }}"
+# selected-text left unset: it then follows the live accent (blood mode, accent override)
+# selected-text           = "{{ accent }}"
 selected-border           = "hyprland.active-border-foreground"
 selected-border-alpha     = 0.25
 
@@ -185,7 +186,8 @@ scrim                     = "{{ background }}"
 scrim-alpha               = 0.5
 selected-background       = "{{ foreground }}"
 selected-background-alpha = 0.08
-selected-text             = "{{ accent }}"
+# selected-text left unset: it then follows the live accent (blood mode, accent override)
+# selected-text           = "{{ accent }}"
 selected-border           = "hyprland.active-border-foreground"
 selected-border-alpha     = 0.25
 

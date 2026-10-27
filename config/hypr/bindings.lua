@@ -99,11 +99,9 @@ o.bind("SUPER + CTRL + V", "Clipboard manager", "omarchy-shell shell toggle daa.
 local menu_keys = {
   { "SUPER + SPACE", "Omarchy menu", "root" },
   { "SUPER + SHIFT + code:201", "Omarchy menu", "root" },
-  { "SUPER + ALT + SPACE", "Apps menu", "apps" },
   { "SUPER + CTRL + C", "Capture menu", "capture" },
   { "SUPER + CTRL + O", "Toggle menu", "toggle" },
   { "SUPER + CTRL + H", "Hardware menu", "hardware" },
-  { "SUPER + ESCAPE", "System menu", "system" },
   { "SUPER + CTRL + SPACE", "Background switcher", "background" },
   { "SUPER + SHIFT + CTRL + SPACE", "Theme menu", "theme" },
   { "SUPER + CTRL + S", "Share", "share" },
@@ -118,8 +116,19 @@ for _, menu in ipairs(menu_keys) do
   hl.unbind(menu[1])
   o.bind(menu[1], menu[2], "~/.local/bin/menu-toggle " .. menu[3])
 end
+-- SUPER + ALT + SPACE: our app grid (daa.launcher, same as SUPER + R) instead
+-- of Omarchy's list-style apps menu.
+hl.unbind("SUPER + ALT + SPACE")
+o.bind("SUPER + ALT + SPACE", "App grid", "omarchy-shell shell toggle daa.launcher")
+-- Easter egg: SUPER + ALT + R, the app grid with a guest of honour.
+hl.unbind("SUPER + ALT + R")
+o.bind("SUPER + ALT + R", "App grid, but better", "omarchy-shell shell summon daa.launcher '{\"mullet\":true}'")
+-- SUPER + ESCAPE and the power button: the power bar (daa.powerbar), a band
+-- across the dimmed screen with S / L / R / O / D options.
+hl.unbind("SUPER + ESCAPE")
+o.bind("SUPER + ESCAPE", "Power menu", "omarchy-shell shell toggle daa.powerbar")
 hl.unbind("XF86PowerOff")
-o.bind("XF86PowerOff", "Power menu", "~/.local/bin/menu-toggle system", { locked = true })
+o.bind("XF86PowerOff", "Power menu", "omarchy-shell shell toggle daa.powerbar", { locked = true })
 
 -- Easter egg: SUPER + CTRL + ALT + SPACE opens the Go menu so hard it swings
 -- into the left edge, the hinge snaps and everything falls off the screen
@@ -168,3 +177,27 @@ for n = 1, 10 do
     hl.exec_cmd("omarchy-shell -q daa.workspaces lap")
   end)
 end
+
+-- Desktop settings (daa.settings): animation toggles and speeds.
+o.bind("SUPER + CTRL + ALT + S", "Desktop settings", "omarchy-shell shell toggle daa.settings")
+
+-- SUPER + SHIFT + Q: zap (daa.zap) -- a scope; click a window to kill every
+-- process of its program, right click / Escape to cancel.
+o.bind("SUPER + SHIFT + Q", "Zap a program (kill all)", "omarchy-shell shell toggle daa.zap")
+
+-- Focus mode: bar hidden, Do Not Disturb, everything but the focused window
+-- dimmed; again to undo (~/.local/bin/focus-mode).
+o.bind("SUPER + CTRL + ALT + F", "Focus mode", "~/.local/bin/focus-mode")
+
+-- Key capture for Desktop settings (scratchpad builder, keybindings): while
+-- the "capture" submap is on, no bindings fire, so a combination that's
+-- already bound reaches the settings panel (which then warns about it).
+-- The panel leaves the submap itself; SUPER + ESCAPE is the way out if not.
+hl.define_submap("capture", function()
+  hl.bind("SUPER + ESCAPE", hl.dsp.submap("reset"))
+end)
+
+-- SUPER + TAB: every open app by workspace (daa.overview); x closes, drag
+-- moves to another workspace. Replaces "next workspace".
+hl.unbind("SUPER + TAB")
+o.bind("SUPER + TAB", "Open apps overview", "omarchy-shell shell toggle daa.overview")

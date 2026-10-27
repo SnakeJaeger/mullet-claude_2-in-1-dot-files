@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+"""Where you left off, for the tablet greeter's "continue" tiles.
+
+Prints a JSON list, most recent first, at most one item per kind:
+  {"kind": "read"|"comic"|"draw"|"watch", "label", "title", "sub",
+   "progress": 0..1 or null, "image": path or "", "cmd": [argv]}
+
+Sources (anything missing is skipped, never an error):
+  read   Foliate: ~/.local/share/com.github.johnfactotum.Foliate/*.json
+         (progress, title), library/uri-store.json (the file), cover in
+         ~/.cache/com.github.johnfactotum.Foliate/<id>.png
+  comic  Komikku: ~/.local/share/komikku/komikku.db (read-only)
+  draw   Krita's recent files (~/.config/kritarc) and Rnote / Xournal++
+         files in the GTK recent list; thumbnail from the .kra preview or
+         the freedesktop thumbnail cache
+  watch  Jellyfin "continue watching", if ~/.local/share/daa/jellyfin.env
+         has JELLYFIN_URL, JELLYFIN_KEY and JELLYFIN_USER (kept out of the
+         dot-files repo)
+Only things touched in the last MAX_AGE_DAYS count.
+"""
+import hashlib, json, os, re, sqlite3, subprocess, sys, time, urllib.parse, urllib.request, zipfile
+from xml.etree import ElementTree
+
+HOME = os.path.expanduser("~")
+CACHE = os.path.join(HOME, ".cache", "daa", "continue")
+MAX_AGE_DAYS = 45
+now = time.time()
+
+
+def fresh(mtime):
+    return mtime and now - mtime < MAX_AGE_DAYS * 86400
+
+
+def foliate():
+    base = os.path.join(HOME, ".local/share/com.github.johnfactotum.Foliate")
+    try:
+        uris = dict(json.load(open(os.path.join(base, "library/uri-store.json"))).get("uris", []))
+    except Exception:
+        return None
+    best = None
+    for name in os.listdir(base) if os.path.isdir(base) else []:
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(base, name)
+        try:
+            data = json.load(open(path))
+        except Exception:
+            continue
+        ident = data.get("metadata", {}).get("identifier")
+        uri = uris.get(ident, "")
+        file = urllib.parse.unquote(uri[7:]) if uri.startswith("file://") else os.path.expanduser(uri)
+        if not file or not os.path.exists(file) or file.startswith(("/tmp/", os.path.join(HOME, ".cache"))):
+            continue
+        mtime = os.path.getmtime(path)
+        if not fresh(mtime) or (best and best[0] >= mtime):
+            continue
+        prog = data.get("progress")
+        frac = (prog[0] + 1) / prog[1] if isinstance(prog, list) and len(prog) == 2 and prog[1] else None
+        if frac is not None and frac >= 0.99:
+            continue  # finished
+        title = data.get("metadata", {}).get("title") or os.path.basename(file)
+        cover = os.path.join(HOME, ".cache/com.github.johnfactotum.Foliate", name[:-5] + ".png")
+        comic = file.lower().endswith((".cbz", ".cbr", ".cb7"))
+        best = (mtime, {
+            "kind": "comic" if comic else "read", "label": "keep reading",
+            "title": re.sub(r"\.(epub|cbz|cbr|cb7|fb2|mobi|azw3?|pdf)$", "", title, flags=re.I),
+            "sub": f"{round(frac * 100)}%" if frac is not None else "",
+            "progress": frac, "image": cover if os.path.exists(cover) else "",
+            "cmd": ["uwsm-app", "--", "foliate", file], "time": mtime})
+    return best[1] if best else None
+
+
+def komikku():
+    db = os.path.join(HOME, ".local/share/komikku/komikku.db")
+    if not os.path.exists(db):
+        return None
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=1)
+        row = con.execute("select id, server_id, name, last_read from mangas where last_read is not null "
+                          "order by last_read desc limit 1").fetchone()
+        if not row:
+            return None
+        mid, server, name, last = row
+        t = time.mktime(time.strptime(str(last)[:19], "%Y-%m-%d %H:%M:%S"))
+        if not fresh(t):
+            return None
+        ch = con.execute("select title, num from chapters where manga_id=? and last_read is not null "
+                         "order by last_read desc limit 1", (mid,)).fetchone()
+        total, read = con.execute("select count(*), sum(read) from chapters where manga_id=?", (mid,)).fetchone()
+    except Exception:
+        return None
+    cover = ""
+    for ext in ("jpg", "png", "webp"):
+        p = os.path.join(HOME, ".local/share/komikku", str(server), name, "cover." + ext)
+        if os.path.exists(p):
+            cover = p
+            break
+    return {"kind": "comic", "label": "keep reading", "title": name,
+            "sub": (ch[0] if ch and ch[0] else ""), "progress": (read or 0) / total if total else None,
+            "image": cover, "cmd": ["uwsm-app", "--", "gtk-launch", "info.febvre.Komikku.desktop"], "time": t}
+
+
+def thumb_for(path):
+    """A preview image: Krita's embedded one, else the freedesktop cache."""
+    os.makedirs(CACHE, exist_ok=True)
+    if path.lower().endswith(".kra"):
+        out = os.path.join(CACHE, hashlib.md5(path.encode()).hexdigest() + ".png")
+        if not os.path.exists(out) or os.path.getmtime(out) < os.path.getmtime(path):
+            try:
+                with zipfile.ZipFile(path) as z:
+                    name = "mergedimage.png" if "mergedimage.png" in z.namelist() else "preview.png"
+                    open(out, "wb").write(z.read(name))
+            except Exception:
+                return ""
+        return out
+    uri = "file://" + urllib.parse.quote(path)
+    md5 = hashlib.md5(uri.encode()).hexdigest()
+    for size in ("x-large", "large", "normal"):
+        p = os.path.join(HOME, ".cache/thumbnails", size, md5 + ".png")
+        if os.path.exists(p):
+            return p
+    return ""
+
+
+def drawing():
+    cands = []
+    try:
+        section = False
+        for line in open(os.path.join(HOME, ".config/kritarc")):
+            line = line.strip()
+            if line.startswith("["):
+                section = line == "[RecentFiles]"
+            elif section and re.match(r"File\d+=", line):
+                cands.append(line.split("=", 1)[1])
+    except Exception:
+        pass
+    try:
+        tree = ElementTree.parse(os.path.join(HOME, ".local/share/recently-used.xbel"))
+        for b in tree.getroot().iter("bookmark"):
+            href = b.get("href", "")
+            if href.startswith("file://") and href.lower().endswith((".rnote", ".xopp", ".kra")):
+                cands.append(urllib.parse.unquote(href[7:]))
+    except Exception:
+        pass
+    best = None
+    for path in set(cands):
+        if not os.path.exists(path):
+            continue
+        mtime = os.path.getmtime(path)
+        if fresh(mtime) and (not best or mtime > best[0]):
+            best = (mtime, path)
+    if not best:
+        return None
+    path = best[1]
+    ext = path.lower().rsplit(".", 1)[-1]
+    app = {"kra": "krita", "rnote": "rnote", "xopp": "xournalpp"}[ext]
+    return {"kind": "draw", "label": "keep drawing", "title": os.path.splitext(os.path.basename(path))[0].strip(),
+            "sub": {"krita": "Krita", "rnote": "Rnote", "xournalpp": "Xournal++"}[app], "progress": None,
+            "image": thumb_for(path), "cmd": ["uwsm-app", "--", app, path], "time": best[0]}
+
+
+def jellyfin():
+    env = {}
+    try:
+        for line in open(os.path.join(HOME, ".local/share/daa/jellyfin.env")):
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, v = line.strip().split("=", 1)
+                env[k] = v.strip().strip('"')
+    except Exception:
+        return None
+    url, key, user = env.get("JELLYFIN_URL", "").rstrip("/"), env.get("JELLYFIN_KEY"), env.get("JELLYFIN_USER")
+    if not (url and key and user):
+        return None
+    hdr = {"Authorization": f'MediaBrowser Token="{key}"'}
+    try:
+        req = urllib.request.Request(f"{url}/Users/{user}/Items/Resume?Limit=1&MediaTypes=Video", headers=hdr)
+        items = json.load(urllib.request.urlopen(req, timeout=3)).get("Items", [])
+    except Exception:
+        return None
+    if not items:
+        return None
+    it = items[0]
+    ud = it.get("UserData", {})
+    played = ud.get("PlaybackPositionTicks", 0)
+    total = it.get("RunTimeTicks") or 0
+    left = max(0, (total - played) // 600000000) if total else None
+    title = it.get("SeriesName") or it.get("Name", "")
+    sub = (f"S{it.get('ParentIndexNumber', 0)}E{it.get('IndexNumber', 0)} · " if it.get("SeriesName") else "") + \
+          (f"{left} min left" if left is not None else "")
+    # Poster: the show's (series) or the film's, cached locally.
+    img_id = it.get("SeriesId") or it.get("Id")
+    os.makedirs(CACHE, exist_ok=True)
+    poster = os.path.join(CACHE, f"jf-{img_id}.jpg")
+    if not os.path.exists(poster):
+        try:
+            req = urllib.request.Request(f"{url}/Items/{img_id}/Images/Primary?maxHeight=480", headers=hdr)
+            open(poster, "wb").write(urllib.request.urlopen(req, timeout=3).read())
+        except Exception:
+            poster = ""
+    last = ud.get("LastPlayedDate", "")
+    try:
+        t = time.mktime(time.strptime(last[:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
+    except Exception:
+        t = now
+    return {"kind": "watch", "label": "keep watching", "title": title, "sub": sub,
+            "progress": played / total if total else None, "image": poster,
+            "cmd": ["uwsm-app", "--", "gtk-launch", "org.jellyfin.JellyfinDesktop.desktop"], "time": t}
+
+
+items = [x for x in (jellyfin(), foliate(), komikku(), drawing()) if x]
+# One per kind (a Foliate comic and a Komikku comic: keep the newer).
+seen, out = set(), []
+for it in sorted(items, key=lambda i: -i["time"]):
+    if it["kind"] in seen:
+        continue
+    seen.add(it["kind"])
+    out.append(it)
+json.dump(out, sys.stdout)

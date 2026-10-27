@@ -51,6 +51,30 @@
 -- Enable touchpad gestures for changing workspaces.
 -- See https://wiki.hypr.land/Configuring/Advanced-and-Cool/Gestures/
 hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
+hl.gesture({ fingers = 4, direction = "horizontal", action = "workspace" })
+-- Three fingers up: apps overview (SUPER+TAB). Down: hide scratchpads / dropdowns.
+-- The touchscreen does the same (~/.config/tablet-mode/gestures).
+hl.gesture({ fingers = 3, direction = "up", action = function()
+  hl.dispatch(hl.dsp.exec_cmd("omarchy-shell shell toggle daa.overview"))
+end })
+hl.gesture({ fingers = 3, direction = "down", action = function()
+  hl.dispatch(hl.dsp.exec_cmd("omarchy-shell -q shell hide daa.overview; $HOME/.local/bin/tablet-mode hide-scratchpads"))
+end })
+
+-- Four fingers up: app grid (SUPER+R). Down: close the focused window.
+hl.gesture({ fingers = 4, direction = "up", action = function()
+  hl.dispatch(hl.dsp.exec_cmd("omarchy-shell shell toggle daa.launcher"))
+end })
+hl.gesture({ fingers = 4, direction = "down", action = function()
+  hl.dispatch(hl.dsp.window.close())
+end })
+
+hl.gesture({ fingers = 5, direction = "down", action = function()
+  hl.dispatch(hl.dsp.exec_cmd("$HOME/.local/bin/projector show"))
+end })
+hl.gesture({ fingers = 5, direction = "up", action = function()
+  hl.dispatch(hl.dsp.exec_cmd("$HOME/.local/bin/projector show"))
+end })
 
 -- Enable touchpad gestures for moving focus (helpful on scrolling layout).
 -- hl.gesture({ fingers = 3, direction = "left", action = function() hl.dispatch(hl.dsp.focus({ direction = "l" })) end })
