@@ -1,4 +1,5 @@
 import QtQuick
+import Qt5Compat.GraphicalEffects as GE
 import qs.Commons
 import qs.Ui
 
@@ -70,6 +71,24 @@ BarWidget {
     bar: root.bar
     text: panelLoader.item ? panelLoader.item.label : ""
     slotSize: Style.bar.statusSlot
+    // Theme cyan (the accent) on hover, like the globe (Devan, 2026-11-08).
+    foreground: (tooltipHovered || root.opened) ? Color.accent : (root.bar ? root.bar.barForeground : Color.foreground)
+    // Press: while the button is held (pressScale < 1, the shell's own
+    // held state) the icon glows brighter in its hover color; it clears on
+    // release, when the click opens as before (Devan, 2026-11-08).
+    readonly property bool held: pressScale < 1
+    // Open: the glow (and hover color) stays on while its popup is showing (Devan, 2026-11-10).
+    layer.enabled: held || root.opened
+    layer.effect: GE.Glow {
+      radius: button.held ? 12 : 8
+      samples: 25
+      spread: button.held ? 0.35 : 0.1
+      color: Color.accent
+      transparentBorder: true
+    }
+    // On the side bar the weather glyphs' ink sits about 1 px left of the
+    // other icons; nudge it back to centre (measured, Devan 2026-11-01).
+    transform: Translate { x: 0 }
     // Tooltip suppressed because the panel is the detail view.
     tooltipText: ""
 
@@ -77,9 +96,10 @@ BarWidget {
       if (!root.bar) return
       if (b === Qt.RightButton) root.bar.run("omarchy-notification-send \"$(omarchy-weather-status)\"")
       else if (b === Qt.MiddleButton) root.refresh()
-      // GNOME Weather dropdown (SUPER + ALT + W in ~/.config/hypr/dropdowns.lua)
-      // instead of the popup panel; SUPER + CTRL + ALT + W still opens that.
-      else root.bar.run("omarchy-shell -q omarchy.bar yieldPopout; hyprctl eval 'dropdown_toggle(\"weather\")'")
+      // Omarchy's own popup panel, like the calendar and globe (Devan,
+      // 2026-11-08, back from the GNOME Weather dropdown, which is still
+      // on SUPER + ALT + W).
+      else root.togglePanel()
     }
   }
 }

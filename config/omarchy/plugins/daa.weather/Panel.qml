@@ -8,6 +8,17 @@ import "Model.js" as Model
 
 Panel {
   id: root
+  // Extreme battery saver (daa.saver, ~/.local/bin/extreme-saver) pauses
+  // this widget's polling.
+  property bool saver: false
+  FileView {
+    path: Quickshell.env("HOME") + "/.local/state/daa/saver"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.saver = String(text()).trim() === "1"
+    onLoadFailed: root.saver = false
+  }
   moduleName: "omarchy.weather"
   ipcTarget: "omarchy.weather"
   manageIpc: false
@@ -470,10 +481,94 @@ Panel {
   Timer {
     id: refreshTimer
     interval: root.refreshMinutes * 60 * 1000
-    running: true
+    running: !root.saver
     repeat: true
     triggeredOnStart: true
     onTriggered: root.refresh()
+  }
+
+  // Extra weather checks (Devan, 2026-11-19): sign-in, online status
+  // change, noon and midnight, and power coming back (boot or resume).
+  // Boot/login is the shell starting (refreshTimer fires on start). Each
+  // trigger goes through eventRefresh, which waits a few seconds so the
+  // network can settle and collapses bursts into one check. Each event also
+  // restarts the 15-minute cycle.
+  function eventRefresh(reason) {
+    if (root.saver) return
+    console.log("daa.weather refresh: " + reason)
+    eventRefreshTimer.restart()
+  }
+
+  Timer {
+    id: eventRefreshTimer
+    interval: 4000
+    onTriggered: { root.refresh(); refreshTimer.restart() }
+  }
+
+  // Sign-in (unlock) and anything else: `weather-refresh <reason>` writes this file.
+  FileView {
+    path: Quickshell.env("HOME") + "/.local/state/daa/weather-refresh"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: root.eventRefresh("weather-refresh (sign-in or manual)")
+  }
+
+  // Online status: NetworkManager reports connectivity changes.
+  Process {
+    id: netMonitor
+    command: ["nmcli", "monitor"]
+    running: true
+    stdout: SplitParser {
+      onRead: function(line) {
+        if (/connectivity is now/i.test(line) || /is now the primary connection/i.test(line))
+          root.eventRefresh("network: " + line)
+      }
+    }
+    onExited: netMonitorRestart.restart()
+  }
+
+  Timer {
+    id: netMonitorRestart
+    interval: 10000
+    onTriggered: netMonitor.running = true
+  }
+
+  // Noon and midnight: sleep until the next 12:00 or 00:00, then re-arm.
+  function msUntilNextHalfDay() {
+    var now = new Date()
+    var next = new Date(now)
+    next.setHours(now.getHours() < 12 ? 12 : 24, 0, 5, 0)
+    return Math.max(1000, next.getTime() - now.getTime())
+  }
+
+  Timer {
+    id: halfDayTimer
+    interval: root.msUntilNextHalfDay()
+    running: true
+    onTriggered: {
+      root.eventRefresh("noon/midnight")
+      interval = root.msUntilNextHalfDay()
+      restart()
+    }
+  }
+
+  // Power back (resume from sleep): timers don't run while suspended, so a
+  // jump in wall-clock time between ticks means the laptop just woke. Also
+  // re-arms the noon/midnight timer, which would otherwise be late.
+  property real lastTick: Date.now()
+  Timer {
+    interval: 20000
+    running: true
+    repeat: true
+    onTriggered: {
+      var now = Date.now()
+      if (now - root.lastTick > 60000) {
+        root.eventRefresh("resume")
+        halfDayTimer.interval = root.msUntilNextHalfDay()
+        halfDayTimer.restart()
+      }
+      root.lastTick = now
+    }
   }
 
   IpcHandler {
@@ -871,6 +966,156 @@ Panel {
                 }
               }
             }
+          }
+        }
+      }
+
+      // ---- Full forecast (bottom left): opens the GNOME Weather app (the
+      //      longer, heavier forecast; also SUPER + ALT + W) beside the bar.
+      //      Hovering sends a comet round it, white head, accent → coral tail,
+      //      and leaves its outline lit (Devan, 2026-11-08).
+      Item {
+        width: parent.width
+        height: fullLink.height + Style.space(8) + 8
+
+        Text {
+          id: fullLink
+          x: 4 + Style.space(10)
+          anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
+          text: "Full forecast  \u203a"
+          color: fullArea.containsMouse ? Commons.Color.accent : root.bar.foreground
+          opacity: fullArea.containsMouse ? 1 : 0.6
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.caption
+          Behavior on opacity { NumberAnimation { duration: 90 } }
+          Behavior on color { ColorAnimation { duration: 120 } }
+        }
+
+        // Always-there pill (the power popup's "Right click any mode" hint
+        // look), with two comets round it each time the popup opens.
+        Rectangle {
+          id: fullPill
+          x: fullComet.x + 4
+          y: fullComet.y + 4
+          width: fullComet.bw
+          height: fullComet.bh
+          radius: height / 2
+          color: Qt.rgba(1, 1, 1, fullArea.containsMouse ? 0.07 : 0.04)
+          border.width: 1
+          border.color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.16)
+          Behavior on color { ColorAnimation { duration: 120 } }
+          CometRim {
+            id: fullHintComets
+            anchors.fill: parent
+            radius: fullPill.radius
+          }
+          Connections {
+            target: root
+            function onOpenedChanged() { if (root.opened) fullHintComets.start() }
+          }
+        }
+
+        Canvas {
+          id: fullComet
+          // A pill round the label, inset 4 from the canvas edge (room for
+          // the comet head and glow).
+          readonly property real bw: fullLink.width + Style.space(20)
+          readonly property real bh: fullLink.height + Style.space(8)
+          x: fullLink.x - Style.space(10) - 4
+          y: fullLink.y - Style.space(4) - 4
+          width: bw + 8
+          height: bh + 8
+          property real t: -1
+          readonly property real lap: 0.6
+          property real lit: fullArea.containsMouse ? 1 : 0
+          Behavior on lit { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+          onLitChanged: requestPaint()
+          readonly property color accent: Commons.Color.accent
+          readonly property color coral: "#f7768e"
+
+          FrameAnimation {
+            running: fullComet.t >= 0
+            onTriggered: {
+              fullComet.t += frameTime
+              if (fullComet.t > fullComet.lap) fullComet.t = -1
+              fullComet.requestPaint()
+            }
+          }
+
+          function perimeter() { var r = bh / 2; return 2 * (bw - 2 * r) + 2 * Math.PI * r }
+          // Clockwise from the top-left end of the straight top edge.
+          function at(s) {
+            var o = 4, r = bh / 2, top = bw - 2 * r, P = perimeter()
+            s = ((s % P) + P) % P
+            if (s <= top) return { x: o + r + s, y: o }
+            s -= top
+            if (s <= Math.PI * r) { var a = -Math.PI / 2 + s / r; return { x: o + bw - r + r * Math.cos(a), y: o + r + r * Math.sin(a) } }
+            s -= Math.PI * r
+            if (s <= top) return { x: o + bw - r - s, y: o + bh }
+            s -= top
+            var b = Math.PI / 2 + s / r
+            return { x: o + r + r * Math.cos(b), y: o + r + r * Math.sin(b) }
+          }
+          function pillPath(ctx) {
+            var o = 4, r = bh / 2
+            ctx.beginPath()
+            ctx.moveTo(o + r, o)
+            ctx.lineTo(o + bw - r, o)
+            ctx.arc(o + bw - r, o + r, r, -Math.PI / 2, Math.PI / 2)
+            ctx.lineTo(o + r, o + bh)
+            ctx.arc(o + r, o + r, r, Math.PI / 2, Math.PI * 1.5)
+            ctx.closePath()
+          }
+
+          onPaint: {
+            var ctx = getContext("2d")
+            ctx.reset()
+            var c = accent, k = coral
+            if (lit > 0) {
+              // The outline stays softly lit while hovered.
+              ctx.strokeStyle = Qt.rgba(c.r, c.g, c.b, 0.12 * lit)
+              ctx.lineWidth = 4
+              pillPath(ctx); ctx.stroke()
+              ctx.strokeStyle = Qt.rgba(c.r, c.g, c.b, 0.45 * lit)
+              ctx.lineWidth = 1
+              pillPath(ctx); ctx.stroke()
+            }
+            if (t < 0) return
+            var P = perimeter(), q = t / lap
+            var head = (1 - Math.pow(1 - q, 2)) * P * 1.15
+            var trail = Math.min(head, P * 0.45), steps = 44
+            ctx.lineCap = "round"
+            for (var i = 0; i < steps; i++) {
+              var a0 = i / steps, a1 = (i + 1) / steps
+              var p0 = at(head - a0 * trail), p1 = at(head - a1 * trail)
+              var alpha = Math.pow(1 - a0, 1.4) * (q > 0.8 ? (1 - q) / 0.2 : 1)
+              // White head, then accent fading into coral down the tail.
+              var m = Math.min(1, a0 * 1.6)
+              ctx.strokeStyle = i < 2 ? Qt.rgba(1, 1, 1, alpha)
+                : Qt.rgba(c.r + (k.r - c.r) * m, c.g + (k.g - c.g) * m, c.b + (k.b - c.b) * m, alpha)
+              ctx.lineWidth = 2.6 * (1 - a0) + 0.6
+              ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke()
+            }
+            // The head's glow.
+            var h = at(head)
+            ctx.fillStyle = Qt.rgba(1, 1, 1, 0.35 * (q > 0.8 ? (1 - q) / 0.2 : 1))
+            ctx.beginPath(); ctx.arc(h.x, h.y, 3, 0, Math.PI * 2); ctx.fill()
+          }
+        }
+
+        MouseArea {
+          id: fullArea
+          x: fullComet.x + 4
+          y: fullComet.y + 4
+          width: fullComet.bw
+          height: fullComet.bh
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onContainsMouseChanged: if (containsMouse) { fullComet.t = 0; fullComet.requestPaint() }
+          onClicked: {
+            root.close()
+            if (root.bar) root.bar.run("hyprctl eval 'dropdown_show(\"weather\")'")
           }
         }
       }

@@ -1,0 +1,6 @@
+#!/bin/bash
+# Ask the bar's weather widget (daa.weather) to re-check now.
+# It watches this file; any write triggers a refresh. $1 = reason (logged).
+f="$HOME/.local/state/daa/weather-refresh"
+mkdir -p "${f%/*}"
+printf '%s %s\n' "$(date -Is)" "${1:-manual}" > "$f"
